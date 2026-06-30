@@ -32,6 +32,7 @@ interface ListenerApi {
   fun getPlaybackSessionAssignTimestampMs(): Long
   fun resetPlaybackSessionAssignTimestamp()
   fun handlePlaybackError(playbackError: PlaybackException)
+  fun onFatalPlaybackError(message: String)
   fun onPlaybackEnded(session: PlaybackSession)
   fun onPlaybackResumed(pauseDurationMs: Long)
   fun debug(message: () -> String)
@@ -94,7 +95,7 @@ class Media3PlayerEventListener(
         }
         val pauseDurationMs =
           if (lastPauseTimestampMs > 0) System.currentTimeMillis() - lastPauseTimestampMs else 0L
-        lastPauseTimestampMs = 0L
+          lastPauseTimestampMs = 0L
           serviceCallbacks.onPlaybackResumed(pauseDurationMs)
       } else {
           serviceCallbacks.debug { "Playback stopped. Syncing progress." }
@@ -165,6 +166,7 @@ class Media3PlayerEventListener(
       }
     } else {
         serviceCallbacks.debug { "Fatal error: ${playbackError.errorCodeName}" }
+        serviceCallbacks.onFatalPlaybackError(playbackError.message ?: "Playback error")
     }
   }
 

@@ -83,6 +83,10 @@ class Media3PlaybackService : MediaLibraryService() {
   private var playerInitialized = false
   private val hasActivePlayer: Boolean
       get() = playerInitialized && this::player.isInitialized
+
+  // Last (trackIndex, chapterTitle) synced into the now-playing metadata; lets ticks short-circuit.
+  private var lastSyncedTrackIndex = -1
+  private var lastSyncedChapterTitle: String? = null
   private val isCastActive: Boolean
       get() {
           if (!this::player.isInitialized) return false
@@ -208,6 +212,10 @@ class Media3PlaybackService : MediaLibraryService() {
 
         override fun handlePlaybackError(playbackError: PlaybackException) {
             this@Media3PlaybackService.handlePlaybackError(playbackError)
+        }
+
+        override fun onFatalPlaybackError(message: String) {
+            this@Media3PlaybackService.handleFatalPlaybackError(message)
         }
 
         override fun onPlaybackEnded(session: PlaybackSession) {
@@ -336,7 +344,7 @@ class Media3PlaybackService : MediaLibraryService() {
       }
 
       override fun getCurrentTimeSeconds(): Double {
-        val session = currentPlaybackSession ?: return 0.0
+          val session = currentPlaybackSession ?: return 0.0
           updateCurrentPosition(session)
         return session.currentTime
       }
@@ -580,8 +588,8 @@ class Media3PlaybackService : MediaLibraryService() {
     }
   }
 
-  fun closePlayback(onPlaybackStopped: (() -> Unit)? = null) {
-    media3SessionManager.closePlayback {
+  fun closePlayback(calledOnError: Boolean = false, onPlaybackStopped: (() -> Unit)? = null) {
+    media3SessionManager.closePlayback(calledOnError = calledOnError) {
       // After session manager completes, stop the service
       media3NotificationManager.setTrackNavigationEnabled(false)
       onPlaybackStopped?.invoke()
@@ -627,7 +635,7 @@ class Media3PlaybackService : MediaLibraryService() {
       if (mediaItemCount <= 0) return player.currentPosition.coerceAtLeast(0L)
     val trackIndex =
         resolveTrackIndexForPlayer(session, player).coerceIn(0, mediaItemCount - 1)
-    val offset = session.getTrackStartOffsetMs(trackIndex)
+      val offset = session.getTrackStartOffsetMs(trackIndex)
       return (player.currentPosition + offset).coerceAtLeast(0L)
   }
 
@@ -635,9 +643,41 @@ class Media3PlaybackService : MediaLibraryService() {
         if (hasActivePlayer) {
             val trackIndex = resolveTrackIndexForPlayer(session, player)
             val trackStartOffset = session.getTrackStartOffsetMs(trackIndex)
-            session.currentTime = ((trackStartOffset + player.currentPosition) / 1000.0)
+            val absolutePosMs = trackStartOffset + player.currentPosition
+            session.currentTime = (absolutePosMs / 1000.0)
+
+            syncChapterMetadataIfNeeded(session, absolutePosMs, trackIndex)
         }
-  }
+    }
+
+    private fun syncChapterMetadataIfNeeded(session: PlaybackSession, currentPosMs: Long, trackIndex: Int) {
+        val chapterTitle = session.getChapterForTime(currentPosMs)?.title
+
+        if (trackIndex == lastSyncedTrackIndex && chapterTitle == lastSyncedChapterTitle) return
+
+        val currentItem = player.currentMediaItem ?: return
+
+        val author = session.displayAuthor ?: ""
+        val trackLabel = session.trackLabelForIndex(trackIndex)
+
+        val artistLine = when {
+            chapterTitle != null && trackLabel != null -> "$chapterTitle ($trackLabel) • $author"
+            chapterTitle != null -> "$chapterTitle • $author"
+            trackLabel != null -> "$trackLabel • $author"
+            else -> author
+        }
+
+        lastSyncedTrackIndex = trackIndex
+        lastSyncedChapterTitle = chapterTitle
+
+        // Only update if the string has actually changed to avoid notification flickering
+        if (currentItem.mediaMetadata.artist != artistLine) {
+            val newMetadata = currentItem.mediaMetadata.buildUpon()
+                .setArtist(artistLine)
+                .build()
+            player.replaceMediaItem(trackIndex, currentItem.buildUpon().setMediaMetadata(newMetadata).build())
+        }
+    }
 
     private fun resolveTrackIndexForPlayer(session: PlaybackSession, player: Player): Int {
         val tracks = session.audioTracks
@@ -712,6 +752,7 @@ class Media3PlaybackService : MediaLibraryService() {
                     "handlePlaybackError: transcode fallback failed for session=${session.id}"
                 )
                 MediaEventManager.clientEventEmitter?.onPlaybackFailed("Unable to play this item")
+                closePlayback(calledOnError = true)
                 return@launch
             }
             val currentSpeed = currentPlaybackSpeed()
@@ -724,8 +765,14 @@ class Media3PlaybackService : MediaLibraryService() {
         } catch (e: Exception) {
             Log.e(TAG, "handlePlaybackError: Exception during transcode fallback", e)
             MediaEventManager.clientEventEmitter?.onPlaybackFailed("Unable to play this item")
+            closePlayback(calledOnError = true)
         }
     }
+  }
+
+  private fun handleFatalPlaybackError(message: String) {
+    MediaEventManager.clientEventEmitter?.onPlaybackFailed(message)
+    closePlayback(calledOnError = true)
   }
 
   private fun handlePlaybackEnded(session: PlaybackSession) {
@@ -812,7 +859,7 @@ class Media3PlaybackService : MediaLibraryService() {
     if (!hasActivePlayer) return
     val trackIndex = session.getCurrentTrackIndex().coerceIn(0, session.audioTracks.lastIndex)
     val trackOffsetMs = session.getTrackStartOffsetMs(trackIndex)
-    val positionInTrack = (session.currentTimeMs - trackOffsetMs).coerceAtLeast(0L)
+      val positionInTrack = (session.currentTimeMs - trackOffsetMs).coerceAtLeast(0L)
       player.seekTo(trackIndex, positionInTrack)
   }
 
@@ -852,12 +899,15 @@ class Media3PlaybackService : MediaLibraryService() {
 
     val trackIndex = session.getCurrentTrackIndex().coerceIn(0, mediaItems.lastIndex)
     val trackStartOffsetMs = session.getTrackStartOffsetMs(trackIndex)
-    val positionInTrack = (session.currentTimeMs - trackStartOffsetMs).coerceAtLeast(0L)
+      val positionInTrack = (session.currentTimeMs - trackStartOffsetMs).coerceAtLeast(0L)
 
       player.setMediaItems(mediaItems, trackIndex, positionInTrack)
       player.setPlaybackSpeed(playbackSpeed ?: mediaManager.getSavedPlaybackRate())
       player.prepare()
       player.playWhenReady = playWhenReady
+    // Reset metadata sync cache so the new session's first tick always pushes fresh metadata
+    lastSyncedTrackIndex = -1
+    lastSyncedChapterTitle = null
     updateTrackNavigationButtons()
 
     notifyWidgetState(isPlayingOverride = playWhenReady)
@@ -945,7 +995,7 @@ class Media3PlaybackService : MediaLibraryService() {
     }
 
     override fun seekBackward(amountMs: Long) {
-      if (!hasActivePlayer) return
+        if (!hasActivePlayer) return
         val target = max(player.currentPosition - amountMs, 0L)
         player.seekTo(target)
     }
@@ -1039,7 +1089,7 @@ class Media3PlaybackService : MediaLibraryService() {
           force
         ) { onSyncComplete?.invoke() }
       },
-      closePlaybackCallback = { onPlaybackStopped -> closePlayback(onPlaybackStopped) },
+      closePlaybackCallback = { onPlaybackStopped -> closePlayback(onPlaybackStopped = onPlaybackStopped) },
         playerProvider = { if (this::player.isInitialized) player else null }
     )
 
@@ -1178,7 +1228,7 @@ class Media3PlaybackService : MediaLibraryService() {
   }
 
   private fun cyclePlaybackSpeed(): Float {
-    val newSpeed = media3NotificationManager.cyclePlaybackSpeed()
+      val newSpeed = media3NotificationManager.cyclePlaybackSpeed()
       player.setPlaybackSpeed(newSpeed)
     mediaManager.setSavedPlaybackRate(newSpeed)
     media3NotificationManager.updateMediaButtonPreferencesAfterSpeedChange(mediaSession)
@@ -1233,7 +1283,7 @@ class Media3PlaybackService : MediaLibraryService() {
   }
 
   private fun togglePlayPauseFromWidget() {
-    if (!hasActivePlayer) return
+      if (!hasActivePlayer) return
       val targetPlaying = !player.isPlaying
       if (player.isPlaying) {
           player.pause()
@@ -1286,7 +1336,7 @@ class Media3PlaybackService : MediaLibraryService() {
    * Utility Helpers
    * ======================================== */
   private fun isEffectivelyPlaying(): Boolean {
-    if (!hasActivePlayer) return false
+      if (!hasActivePlayer) return false
 
       val player = player
     return player.isPlaying ||

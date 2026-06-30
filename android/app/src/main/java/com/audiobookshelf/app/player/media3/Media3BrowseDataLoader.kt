@@ -19,6 +19,7 @@ import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withTimeout
 import kotlin.coroutines.resume
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Handles data loading operations for Media3 browse tree.
@@ -33,8 +34,19 @@ class Media3BrowseDataLoader(private val mediaManager: MediaManager) {
     private val seriesListRequests: MutableMap<String, Deferred<List<LibrarySeriesItem>>> = mutableMapOf()
     private val collectionsListRequests: MutableMap<String, Deferred<List<LibraryCollection>>> = mutableMapOf()
 
+    // Persistent caches to avoid repeated server hits during navigation
+    private val authorsCache = mutableMapOf<String, List<LibraryAuthorItem>>()
+    private val seriesCache = mutableMapOf<String, List<LibrarySeriesItem>>()
+    private val collectionsCache = mutableMapOf<String, List<LibraryCollection>>()
+
+    fun clearCache() {
+        authorsCache.clear()
+        seriesCache.clear()
+        collectionsCache.clear()
+    }
+
   private suspend fun <T> withMediaManagerCallback(operation: (callback: (T?) -> Unit) -> Unit): T =
-      withTimeout(CALLBACK_TIMEOUT_MS) {
+      withTimeout(CALLBACK_TIMEOUT_MS.milliseconds) {
           suspendCancellableCoroutine { continuation ->
               operation { result ->
                   if (continuation.isActive) {
@@ -47,7 +59,7 @@ class Media3BrowseDataLoader(private val mediaManager: MediaManager) {
     }
 
   private suspend fun <T> withSingleItemCallback(operation: (callback: (T?) -> Unit) -> Unit): T? =
-      withTimeout(CALLBACK_TIMEOUT_MS) {
+      withTimeout(CALLBACK_TIMEOUT_MS.milliseconds) {
           suspendCancellableCoroutine { continuation ->
               operation { result ->
                   if (continuation.isActive) {
@@ -110,35 +122,41 @@ class Media3BrowseDataLoader(private val mediaManager: MediaManager) {
     }
   }
 
-    suspend fun loadAuthorsWithBooks(libraryId: String): List<LibraryAuthorItem> =
-        coalescedLoad(authorsListRequests, libraryId) {
+    suspend fun loadAuthorsWithBooks(libraryId: String): List<LibraryAuthorItem> {
+        authorsCache[libraryId]?.let { return it }
+        return coalescedLoad(authorsListRequests, libraryId) {
             withMediaManagerCallback {
                 mediaManager.loadAuthorsWithBooks(libraryId) { result ->
                     debugLog("authors loaded library=$libraryId count=${result.size}")
                     it(result)
                 }
             }
+        }.also { authorsCache[libraryId] = it }
     }
 
-    suspend fun loadLibrarySeriesWithAudio(libraryId: String): List<LibrarySeriesItem> =
-        coalescedLoad(seriesListRequests, libraryId) {
+    suspend fun loadLibrarySeriesWithAudio(libraryId: String): List<LibrarySeriesItem> {
+        seriesCache[libraryId]?.let { return it }
+        return coalescedLoad(seriesListRequests, libraryId) {
             withMediaManagerCallback {
-        mediaManager.loadLibrarySeriesWithAudio(libraryId) { result ->
-            debugLog("series loaded library=$libraryId count=${result.size}")
-          it(result)
-        }
-      }
-        }
+                mediaManager.loadLibrarySeriesWithAudio(libraryId) { result ->
+                    debugLog("series loaded library=$libraryId count=${result.size}")
+                    it(result)
+                }
+            }
+        }.also { seriesCache[libraryId] = it }
+    }
 
-    suspend fun loadLibraryCollectionsWithAudio(libraryId: String): List<LibraryCollection> =
-        coalescedLoad(collectionsListRequests, libraryId) {
+    suspend fun loadLibraryCollectionsWithAudio(libraryId: String): List<LibraryCollection> {
+        collectionsCache[libraryId]?.let { return it }
+        return coalescedLoad(collectionsListRequests, libraryId) {
             withMediaManagerCallback {
-        mediaManager.loadLibraryCollectionsWithAudio(libraryId) { result ->
-            debugLog("collections loaded library=$libraryId count=${result.size}")
-          it(result)
-        }
-      }
-        }
+                mediaManager.loadLibraryCollectionsWithAudio(libraryId) { result ->
+                    debugLog("collections loaded library=$libraryId count=${result.size}")
+                    it(result)
+                }
+            }
+        }.also { collectionsCache[libraryId] = it }
+    }
 
     suspend fun loadLibraryDiscoveryBooksWithAudio(libraryId: String): List<LibraryItem> =
         coalescedLoad(seriesItemsRequests, libraryId) {
@@ -186,9 +204,9 @@ class Media3BrowseDataLoader(private val mediaManager: MediaManager) {
       }
       }
 
-  suspend fun loadPodcastEpisodes(podcastId: String, context: Context): List<MediaItem> {
-    val episodes = mediaManager.loadPodcastEpisodes(podcastId, context) ?: emptyList()
-      debugLog("podcast episodes loaded podcast=$podcastId count=${episodes.size}")
+    suspend fun loadPodcastEpisodes(podcastId: String, context: Context): List<MediaItem> {
+        val episodes = mediaManager.loadPodcastEpisodes(podcastId, context) ?: emptyList()
+        debugLog("podcast episodes loaded podcast=$podcastId count=${episodes.size}")
     return episodes.toList()
   }
 

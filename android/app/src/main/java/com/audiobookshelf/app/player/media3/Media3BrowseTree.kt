@@ -18,7 +18,7 @@ import com.audiobookshelf.app.data.PodcastEpisode
 import com.audiobookshelf.app.media.MediaManager
 import com.audiobookshelf.app.media.getUriToAbsIconDrawable
 import com.audiobookshelf.app.player.PLAYER_MEDIA3
-import com.audiobookshelf.app.player.toPlayerMediaItems
+import com.audiobookshelf.app.player.toMedia3MediaItems
 import com.google.common.collect.ImmutableList
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -83,24 +83,11 @@ class Media3BrowseTree(
       return@withContext null
     }
 
-      val mediaItems = playbackSession.toPlayerMediaItems(
+    val mediaItems = playbackSession.toMedia3MediaItems(
       context,
       preferServerUrisForCast = preferServerUrisForCast
-      ).map { playerMediaItem ->
-          val metadata = MediaMetadata.Builder()
-              .setTitle(playerMediaItem.title)
-              .setArtworkUri(playerMediaItem.artworkUri)
-              .setIsBrowsable(false)
-              .setIsPlayable(true)
-              .build()
-          MediaItem.Builder()
-              .setMediaId(playerMediaItem.mediaId)
-              .setUri(playerMediaItem.uri)
-              .setMediaMetadata(metadata)
-              .setMimeType(playerMediaItem.mimeType)
-              .build()
-      }
-      Log.d(TAG, "Successfully resolved mediaId: $mediaId into ${mediaItems.size} item(s).")
+    )
+    Log.d(TAG, "Successfully resolved mediaId: $mediaId into ${mediaItems.size} item(s).")
     val resumePositionMs = resolveResumePositionMs(mediaTarget, playbackSession)
     val startIndex = resolveTrackIndexForPosition(playbackSession, resumePositionMs).coerceIn(
       0,
@@ -334,7 +321,7 @@ class Media3BrowseTree(
   }
 
     fun invalidateSeriesCache() {
-        itemBuilder.clearSeriesViewCache()
+        dataLoader.clearCache()
   }
 
   companion object {

@@ -45,7 +45,9 @@ class SleepTimerCoordinator(
 
   fun isStarted(): Boolean = hostAdapter != null
 
+  @Synchronized
   fun start(adapter: SleepTimerHostAdapter) {
+    if (hostAdapter != null) return
     hostAdapter = adapter
     ensureShakeController()
     ensureSleepTimerManager()
@@ -55,6 +57,7 @@ class SleepTimerCoordinator(
     release()
   }
 
+  @Synchronized
   fun release() {
     shakeController?.release()
     shakeController = null

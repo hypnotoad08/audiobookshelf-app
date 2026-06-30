@@ -7,6 +7,7 @@ import androidx.media3.common.*
 import androidx.media3.common.MediaMetadata
 import com.audiobookshelf.app.data.*
 import com.audiobookshelf.app.device.DeviceManager
+import com.audiobookshelf.app.player.media3.coverUriToArtworkData
 import com.google.android.gms.cast.*
 
 /** HLS MIME type used by DefaultMediaSourceFactory to create HlsMediaSource */
@@ -88,23 +89,71 @@ private fun PlaybackSession.castQueueItemWithServerUri(
     .build()
 }
 
+/**
+ * Per-track label for a multi-track session, or null for single-track sessions. Falls back to
+ * "Part N" when the title is missing, echoes the book title, or looks like a filename ("track_001").
+ */
+fun PlaybackSession.trackLabelForIndex(index: Int): String? {
+  if (audioTracks.size <= 1) return null
+  val bookTitle = displayTitle ?: ""
+  val t = audioTracks.getOrNull(index)?.title
+  return if (!t.isNullOrEmpty() && !t.equals(bookTitle, ignoreCase = true) && !t.contains("_")) t
+  else "Part ${index + 1}"
+}
+
+fun PlaybackSession.artistLineForTrack(index: Int): String {
+  val author = displayAuthor ?: ""
+  val trackLabel = trackLabelForIndex(index)
+  return if (trackLabel != null) "$trackLabel • $author" else author
+}
+
+/** Cover artwork bytes for a local item, or null for server items / unreadable covers. */
+private fun PlaybackSession.localCoverArtworkData(ctx: Context): ByteArray? {
+  if (!isLocal) return null
+  val coverUri = getCoverUri(ctx)
+  if (coverUri.scheme != "content") return null
+  return coverUriToArtworkData(coverUri, ctx, size = 512, quality = 85)
+}
+
 fun PlaybackSession.toMedia3MediaItems(
   ctx: Context,
   preferServerUrisForCast: Boolean = false
 ): List<MediaItem> {
-  return toPlayerMediaItems(ctx, preferServerUrisForCast).map { playerMediaItem ->
+  val playerMediaItems = toPlayerMediaItems(ctx, preferServerUrisForCast)
+
+  // Decoded once per session, then reused for every track below.
+  val localArtworkData = localCoverArtworkData(ctx)
+
+  return playerMediaItems.mapIndexed { index, playerMediaItem ->
+    val audioTrack = audioTracks.getOrNull(index)
+    val bookTitle = displayTitle ?: ""
+    val author = displayAuthor ?: ""
+
+    val metadataBuilder = MediaMetadata.Builder()
+      .setTitle(bookTitle)
+      .setArtist(artistLineForTrack(index))
+      .setAlbumTitle(bookTitle)
+      .setAlbumArtist(author)
+      .setArtworkUri(playerMediaItem.artworkUri)
+      .setTrackNumber(index + 1)
+      .setTotalTrackCount(audioTracks.size)
+      .setDurationMs(audioTrack?.durationMs ?: C.TIME_UNSET)
+      .setIsPlayable(true)
+      .setIsBrowsable(false)
+      .setMediaType(
+        if (isPodcastEpisode) MediaMetadata.MEDIA_TYPE_PODCAST_EPISODE
+        else MediaMetadata.MEDIA_TYPE_AUDIO_BOOK
+      )
+
+    if (localArtworkData != null) {
+      metadataBuilder.setArtworkData(localArtworkData, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+    }
+
     MediaItem.Builder()
       .setUri(playerMediaItem.uri.toString())
       .setMediaId(playerMediaItem.mediaId)
       .setMimeType(playerMediaItem.mimeType)
-      .setMediaMetadata(
-        MediaMetadata.Builder()
-          .setTitle(displayTitle)
-          .setArtist(displayAuthor)
-          .setAlbumArtist(displayAuthor)
-          .setArtworkUri(playerMediaItem.artworkUri)
-          .build()
-      )
+      .setMediaMetadata(metadataBuilder.build())
       .build()
   }
 }

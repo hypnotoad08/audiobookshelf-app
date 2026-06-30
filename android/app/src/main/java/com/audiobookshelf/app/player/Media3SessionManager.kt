@@ -89,14 +89,13 @@ class Media3SessionManager(
     assignPlaybackSession(session)
   }
 
-  fun closePlayback(afterStop: (() -> Unit)? = null) {
+  fun closePlayback(calledOnError: Boolean = false, afterStop: (() -> Unit)? = null) {
     val session = currentPlaybackSession
     if (session != null) {
       val signal = CompletableDeferred<Unit>()
       closePlaybackSignal = signal
 
-        serviceCallbacks.updateCurrentPosition(session)
-        serviceCallbacks.maybeSyncProgress("close", true, session) { _ ->
+      val tearDown = {
         serviceScope.launch(Dispatchers.Main) {
           playbackMetrics.logSummary()
 
@@ -110,12 +109,20 @@ class Media3SessionManager(
                 playerControl.isInitialized = false
           }
             serviceCallbacks.resetProgressSyncState()
-          currentPlaybackSession = null
+            currentPlaybackSession = null
             serviceCallbacks.notifyWidgetState(true)
           signal.complete(Unit)
           closePlaybackSignal = null
           afterStop?.invoke()
         }
+        Unit
+      }
+
+      if (calledOnError) {
+        tearDown()
+      } else {
+        serviceCallbacks.updateCurrentPosition(session)
+        serviceCallbacks.maybeSyncProgress("close", true, session) { _ -> tearDown() }
       }
     } else {
       closePlaybackSignal?.complete(Unit)

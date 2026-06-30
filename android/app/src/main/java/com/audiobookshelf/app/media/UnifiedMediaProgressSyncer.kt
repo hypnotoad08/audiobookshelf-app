@@ -16,6 +16,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlin.time.Duration.Companion.milliseconds
 
 /**
  * Periodic progress syncer for Media3 playback.
@@ -85,13 +86,13 @@ class UnifiedMediaProgressSyncer(
     isSyncTimerRunning = true
     lastSyncTime = System.currentTimeMillis()
     currentPlaybackSession = playbackSession.clone()
-    serverSessionClosed = false
+      serverSessionClosed = false
       Log.d(TAG, "start: Started 15s periodic sync loop for ${playbackSession.displayTitle}")
 
     // Coroutine-based periodic sync - replaces Timer + Handler.post chain
     syncJob = syncScope.launch {
       while (isActive) {
-        delay(PERIODIC_SYNC_INTERVAL)
+        delay(PERIODIC_SYNC_INTERVAL.milliseconds)
 
         if (playbackTelemetryProvider.isPlayerActive()) {
           if (playbackTelemetryProvider.isSleepTimerActive()) {
@@ -152,7 +153,7 @@ class UnifiedMediaProgressSyncer(
 
     syncJob?.cancel()
     syncJob = null
-    isSyncTimerRunning = false
+      isSyncTimerRunning = false
       Log.v(TAG, "pause: Stopping sync loop for $currentDisplayTitle")
 
     val currentTime = playbackTelemetryProvider.getCurrentTimeSeconds()
@@ -186,7 +187,7 @@ class UnifiedMediaProgressSyncer(
     if (isSyncTimerRunning) {
       syncJob?.cancel()
       syncJob = null
-      isSyncTimerRunning = false
+        isSyncTimerRunning = false
         Log.v(TAG, "stop: Stopping sync loop for $currentDisplayTitle")
     } else {
         Log.v(TAG, "stop: Sync loop already stopped for $currentDisplayTitle")
@@ -223,7 +224,7 @@ class UnifiedMediaProgressSyncer(
 
     syncJob?.cancel()
     syncJob = null
-    isSyncTimerRunning = false
+      isSyncTimerRunning = false
       Log.d(TAG, "finished: Book finished for $currentDisplayTitle")
 
     val currentTime = playbackTelemetryProvider.getCurrentTimeSeconds()

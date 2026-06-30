@@ -139,13 +139,11 @@ dependencies {
   // during class verification on devices that eagerly resolve references. Simpler and safer.
   exov2Implementation "androidx.media3:media3-exoplayer:$media3_version"
   exov2Implementation "androidx.media3:media3-session:$media3_version"
-  exov2Implementation "androidx.media3:media3-ui:$media3_version"
   exov2Implementation "androidx.media3:media3-cast:$media3_version"
   exov2Implementation "androidx.media3:media3-exoplayer-hls:$media3_version"
 
   media3Implementation "androidx.media3:media3-exoplayer:$media3_version"
   media3Implementation "androidx.media3:media3-session:$media3_version"
-  media3Implementation "androidx.media3:media3-ui:$media3_version"
   media3Implementation "androidx.media3:media3-cast:$media3_version"
   media3Implementation "androidx.media3:media3-exoplayer-hls:$media3_version"
 

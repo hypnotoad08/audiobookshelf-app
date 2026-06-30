@@ -3,7 +3,9 @@ package com.audiobookshelf.app.player.media3
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.graphics.ImageDecoder
 import android.net.Uri
+import android.os.Build
 import android.provider.MediaStore
 import android.util.Log
 import androidx.core.content.FileProvider
@@ -13,6 +15,7 @@ import androidx.core.net.toUri
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.UnstableApi
+import androidx.media3.session.MediaConstants
 import com.audiobookshelf.app.BuildConfig
 import com.audiobookshelf.app.data.AndroidAutoBrowseSeriesSequenceOrderSetting
 import com.audiobookshelf.app.data.DeviceSettings
@@ -45,14 +48,38 @@ class Media3BrowseItemBuilder(
 ) {
 
   companion object {
-      const val DOWNLOADS_ID = Media3BrowseTree.DOWNLOADS_ID
-      const val CONTINUE_LISTENING_ID = Media3BrowseTree.CONTINUE_LISTENING_ID
-      const val LIBRARIES_ROOT = Media3BrowseTree.LIBRARIES_ROOT
-      const val RECENTLY_ROOT = Media3BrowseTree.RECENTLY_ROOT
+    const val DOWNLOADS_ID = Media3BrowseTree.DOWNLOADS_ID
+    const val CONTINUE_LISTENING_ID = Media3BrowseTree.CONTINUE_LISTENING_ID
+    const val LIBRARIES_ROOT = Media3BrowseTree.LIBRARIES_ROOT
+    const val RECENTLY_ROOT = Media3BrowseTree.RECENTLY_ROOT
   }
 
   private val deviceSettings
     get() = DeviceManager.deviceData.deviceSettings ?: DeviceSettings.default()
+
+  private fun gridStyleExtras(mediaId: String): Bundle {
+    val extras = Bundle()
+    // Explicitly target nodes that should be grids (covers/shelves)
+    // Avoid targeting the root categories (AUTHORS, SERIES_LIST) so they remain lists
+    val isGrid = mediaId.contains("__BOOKS") ||
+                 mediaId.contains("__DISCOVERY") ||
+                 mediaId.contains("__AUTHOR__") ||
+                 mediaId.contains("__SERIES__") ||
+                 mediaId.contains("__COLLECTION__") ||
+                 mediaId.contains(CONTINUE_LISTENING_ID)
+
+    if (isGrid) {
+      extras.putInt(
+        MediaConstants.EXTRAS_KEY_CONTENT_STYLE_BROWSABLE,
+        MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM
+      )
+      extras.putInt(
+        MediaConstants.EXTRAS_KEY_CONTENT_STYLE_PLAYABLE,
+        MediaConstants.EXTRAS_VALUE_CONTENT_STYLE_GRID_ITEM
+      )
+    }
+    return extras
+  }
 
   fun createBrowsableCategory(mediaId: String, title: String, iconName: String): MediaItem {
     val mediaMetadata = MediaMetadata.Builder()
@@ -60,6 +87,7 @@ class Media3BrowseItemBuilder(
       .setArtworkUri(getUriToAbsIconDrawable(context, iconName))
       .setIsBrowsable(true)
       .setIsPlayable(false)
+      .setExtras(gridStyleExtras(mediaId))
       .build()
     return MediaItem.Builder()
       .setMediaId(mediaId)
@@ -81,6 +109,7 @@ class Media3BrowseItemBuilder(
       .setArtworkUri(artworkUri)
       .setIsBrowsable(isBrowsable)
       .setIsPlayable(!isBrowsable)
+      .setExtras(gridStyleExtras(mediaId))
       .build()
     return MediaItem.Builder()
       .setMediaId(mediaId)
@@ -121,7 +150,7 @@ class Media3BrowseItemBuilder(
   fun buildDownloadsItems(): List<MediaItem> {
       Log.d(TAG, "buildDownloadsItems: start")
     val localBooks = DeviceManager.dbManager.getLocalLibraryItems("book")
-    val localPodcasts = DeviceManager.dbManager.getLocalLibraryItems("podcast")
+      val localPodcasts = DeviceManager.dbManager.getLocalLibraryItems("podcast")
       Log.d(TAG, "buildDownloadsItems: localBooks ${localBooks.size}, localPodcasts ${localPodcasts.size}")
 
     val bookItems = localBooks.mapNotNull { libraryItem ->
@@ -229,7 +258,7 @@ class Media3BrowseItemBuilder(
 
     return when (librarySubBrowseType) {
       "AUTHORS" -> buildAuthorsList(libraryId, mediaIdParts)
-      "SERIES_LIST" -> buildSeriesList(libraryId)
+      "SERIES_LIST" -> buildSeriesList(libraryId, mediaIdParts)
       "COLLECTIONS" -> buildCollectionsList(libraryId)
       "DISCOVERY" -> browseDataLoader.loadLibraryDiscoveryBooksWithAudio(libraryId)
         .map { book -> libraryItemToMediaItem(book, parentId) }
@@ -257,33 +286,99 @@ class Media3BrowseItemBuilder(
     mediaIdParts: List<String>
   ): List<MediaItem> {
     val libraryAuthors: List<LibraryAuthorItem> = browseDataLoader.loadAuthorsWithBooks(libraryId)
-    val letter = mediaIdParts.getOrNull(4)?.firstOrNull()?.uppercaseChar()
-    return if (letter == null) {
-      buildAuthorIndex(libraryId, libraryAuthors)
-    } else {
-      buildAuthorLetterChildren(libraryAuthors, letter)
-    }
+    val prefix = mediaIdParts.getOrNull(4) ?: ""
+
+    return recursiveAlphabeticalGroup(
+      items = libraryAuthors,
+      prefix = prefix,
+      titleSelector = { it.name },
+      itemMapper = { author -> author.getMediaItem(null, context) },
+      folderMapper = { subPrefix, count ->
+        buildMediaItem(
+          mediaId = "__LIBRARY__${libraryId}__AUTHORS__${subPrefix}",
+          title = subPrefix,
+          subtitle = "$count authors",
+          artworkUri = getUriToAbsIconDrawable(context, "person"),
+          isBrowsable = true,
+          mimeType = null
+        )
+      }
+    )
   }
 
-  private val seriesViewCache = mutableMapOf<String, List<MediaItem>>()
-
-  fun clearSeriesViewCache() {
-    seriesViewCache.clear()
-  }
-
-  private suspend fun buildSeriesList(libraryId: String): List<MediaItem> {
-    seriesViewCache[libraryId]?.let { return it }
+  private suspend fun buildSeriesList(
+    libraryId: String,
+    mediaIdParts: List<String>
+  ): List<MediaItem> {
     val librarySeriesItems = orderSeries(browseDataLoader.loadLibrarySeriesWithAudio(libraryId))
-    return librarySeriesItems.map { librarySeries ->
-      buildMediaItem(
-        "__LIBRARY__${libraryId}__SERIES__${librarySeries.id}",
-        librarySeries.title,
-        "${librarySeries.audiobookCount} books",
-        getUriToAbsIconDrawable(context, "bookshelf"),
-        true,
-        null
-      )
-    }.also { seriesViewCache[libraryId] = it }
+    val prefix = mediaIdParts.getOrNull(4) ?: ""
+
+    return recursiveAlphabeticalGroup(
+      items = librarySeriesItems,
+      prefix = prefix,
+      titleSelector = { it.title },
+      itemMapper = { series ->
+        buildMediaItem(
+          "__LIBRARY__${libraryId}__SERIES__${series.id}",
+          series.title,
+          "${series.audiobookCount} books",
+          getUriToAbsIconDrawable(context, "bookshelf"),
+          true,
+          null
+        )
+      },
+      folderMapper = { subPrefix, count ->
+        buildMediaItem(
+          mediaId = "__LIBRARY__${libraryId}__SERIES_LIST__${subPrefix}",
+          title = subPrefix,
+          subtitle = "$count series",
+          artworkUri = getUriToAbsIconDrawable(context, "bookshelf"),
+          isBrowsable = true,
+          mimeType = null
+        )
+      }
+    )
+  }
+
+  /**
+   * Replicates the legacy recursive alphabetical grouping logic for large lists.
+   * If items > threshold, creates sub-folders based on the next character of the prefix.
+   */
+  private fun <T> recursiveAlphabeticalGroup(
+    items: List<T>,
+    prefix: String,
+    titleSelector: (T) -> String?,
+    itemMapper: (T) -> MediaItem,
+    folderMapper: (String, Int) -> MediaItem
+  ): List<MediaItem> {
+    val groupingThreshold = deviceSettings.androidAutoBrowseLimitForGrouping
+
+    // Filter items that match the current prefix
+    val filtered = if (prefix.isEmpty()) items else items.filter {
+      titleSelector(it)?.startsWith(prefix, ignoreCase = true) == true
+    }
+
+    // If list is small enough or we can't sub-group further, return the items
+    if (filtered.size <= groupingThreshold || filtered.size <= 1) {
+      return filtered.map(itemMapper)
+    }
+
+    // Otherwise, group by the NEXT character
+    val nextCharIndex = prefix.length
+    val grouped = filtered.groupBy {
+      val title = titleSelector(it) ?: ""
+      if (title.length > nextCharIndex) title.substring(0, nextCharIndex + 1).uppercase()
+      else title.uppercase()
+    }
+
+    // If grouping didn't actually reduce the list size (e.g. all items have same prefix), just return items
+    if (grouped.size <= 1) {
+      return filtered.map(itemMapper)
+    }
+
+    return grouped.keys.sorted().map { subPrefix ->
+      folderMapper(subPrefix, grouped[subPrefix]?.size ?: 0)
+    }
   }
 
   private suspend fun buildCollectionsList(libraryId: String): List<MediaItem> {
@@ -371,45 +466,6 @@ class Media3BrowseItemBuilder(
       isBrowsable = true,
       mimeType = null
     )
-  }
-
-  private fun buildAuthorIndex(
-    libraryId: String,
-    libraryAuthors: List<LibraryAuthorItem>
-  ): List<MediaItem> {
-    if (!shouldGroupAuthors(libraryAuthors)) {
-      return libraryAuthors.map { author -> author.getMediaItem(null, context) }
-    }
-    val authorsByLetter = libraryAuthors.groupBy { authorLetterKey(it.name) }
-    if (authorsByLetter.size <= 1) {
-      return libraryAuthors.map { author -> author.getMediaItem(null, context) }
-    }
-    return authorsByLetter.keys.sorted().map { letter ->
-      val count = authorsByLetter[letter]?.size ?: 0
-      buildMediaItem(
-        mediaId = "__LIBRARY__${libraryId}__AUTHORS__${letter}",
-        title = letter.toString(),
-        subtitle = "$count authors",
-        artworkUri = getUriToAbsIconDrawable(context, "person"),
-        isBrowsable = true,
-        mimeType = null
-      )
-    }
-  }
-
-  private fun buildAuthorLetterChildren(
-    libraryAuthors: List<LibraryAuthorItem>,
-    letter: Char
-  ): List<MediaItem> {
-    val normalized = letter.uppercaseChar()
-    return libraryAuthors
-      .filter { authorLetterKey(it.name) == normalized }
-      .map { author -> author.getMediaItem(null, context, normalized.toString()) }
-  }
-
-  private fun shouldGroupAuthors(libraryAuthors: List<LibraryAuthorItem>): Boolean {
-    val groupingThreshold = deviceSettings.androidAutoBrowseLimitForGrouping
-    return libraryAuthors.size > groupingThreshold && libraryAuthors.size > 1
   }
 
   private fun authorLetterKey(name: String?): Char {
@@ -522,22 +578,47 @@ class Media3BrowseItemBuilder(
 
 internal fun MediaItem.withDownloadArtwork(item: LocalLibraryItem, context: Context): MediaItem {
   val coverUri = resolveLocalDownloadCover(item, context) ?: return this
-    Log.d(TAG, "withDownloadArtwork: item ${item.id}, coverUri $coverUri")
-  try {
-      val bitmap = MediaStore.Images.Media.getBitmap(context.contentResolver, coverUri)
-    val resizedBitmap = bitmap.scale(256, 256)
-      val outputStream = ByteArrayOutputStream()
-      resizedBitmap.compress(Bitmap.CompressFormat.JPEG, 90, outputStream)
-    val artworkData = outputStream.toByteArray()
-    val updatedMetadata = mediaMetadata.buildUpon()
-      .setArtworkData(artworkData, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
-      .build()
-    return this.buildUpon()
-      .setMediaMetadata(updatedMetadata)
-      .build()
+  Log.d(TAG, "withDownloadArtwork: item ${item.id}, coverUri $coverUri")
+  val artworkData = coverUriToArtworkData(coverUri, context, size = 256, quality = 90) ?: return this
+  val updatedMetadata = mediaMetadata.buildUpon()
+    .setArtworkData(artworkData, MediaMetadata.PICTURE_TYPE_FRONT_COVER)
+    .build()
+  return this.buildUpon()
+    .setMediaMetadata(updatedMetadata)
+    .build()
+}
+
+/**
+ * Decodes a cover [coverUri] into scaled JPEG bytes, granting gearhead read permission first so
+ * Android Auto's split-screen widget can use them. Returns null if the cover can't be read.
+ */
+internal fun coverUriToArtworkData(
+  coverUri: Uri,
+  context: Context,
+  size: Int,
+  quality: Int
+): ByteArray? {
+  return try {
+    runCatching {
+      context.grantUriPermission(
+        "com.google.android.projection.gearhead",
+        coverUri,
+        Intent.FLAG_GRANT_READ_URI_PERMISSION
+      )
+    }
+    val bitmap = if (Build.VERSION.SDK_INT < 28) {
+      @Suppress("DEPRECATION")
+      MediaStore.Images.Media.getBitmap(context.contentResolver, coverUri)
+    } else {
+      ImageDecoder.decodeBitmap(ImageDecoder.createSource(context.contentResolver, coverUri))
+    }
+    ByteArrayOutputStream().use { out ->
+      bitmap.scale(size, size).compress(Bitmap.CompressFormat.JPEG, quality, out)
+      out.toByteArray()
+    }
   } catch (e: Exception) {
-      Log.w(TAG, "Failed to load bitmap for artwork: ${e.message}")
-    return this
+    Log.w(TAG, "coverUriToArtworkData: failed to load cover: ${e.message}")
+    null
   }
 }
 

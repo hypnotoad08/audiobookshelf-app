@@ -438,7 +438,7 @@ class PlaybackController(private val context: Context) {
 
   fun playPause(): Boolean {
       val controller = mediaController ?: return false
-    forceNextPlayingStateUpdate = true
+      forceNextPlayingStateUpdate = true
       return if (controller.isPlaying) {
           controller.pause()
           false

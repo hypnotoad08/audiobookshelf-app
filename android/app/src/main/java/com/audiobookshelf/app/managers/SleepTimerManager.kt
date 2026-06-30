@@ -550,7 +550,7 @@ constructor(private val host: SleepTimerHost, serviceScope: CoroutineScope) {
    */
   fun sendCurrentSleepTimerState() {
     if (sleepTimerRunning) {
-      val timeRemaining = getSleepTimerTimeRemainingSeconds(getPlaybackSpeed())
+        val timeRemaining = getSleepTimerTimeRemainingSeconds(getPlaybackSpeed())
         host.notifySleepTimerSet(timeRemaining, isAutoSleepTimer)
     } else {
         host.notifySleepTimerSet(0, false)
