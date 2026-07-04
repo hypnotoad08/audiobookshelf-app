@@ -2,7 +2,6 @@ package com.audiobookshelf.app.player.media3
 
 import android.content.ComponentName
 import android.content.Context
-import android.content.Intent
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -211,11 +210,6 @@ class PlaybackController(private val context: Context) {
     }
   }
 
-  private fun ensureServiceStarted() {
-    val intent = Intent(context, Media3PlaybackService::class.java)
-    ContextCompat.startForegroundService(context, intent)
-  }
-
   /* ======== Player Events & Listeners ======== */
 
   private val controllerListener = object : Player.Listener {
@@ -378,8 +372,10 @@ class PlaybackController(private val context: Context) {
     activePlaybackSession = playbackSession
     listener?.onPlaybackSession(playbackSession)
 
-    ensureServiceStarted()
-
+    // Connecting the MediaController binds (and creates) the service; the service promotes
+    // itself to foreground once playback starts. Starting it eagerly with
+    // startForegroundService here risks ForegroundServiceDidNotStartInTimeException when the
+    // app backgrounds before the player reaches READY.
     connect {
       val controller = mediaController ?: return@connect
 
