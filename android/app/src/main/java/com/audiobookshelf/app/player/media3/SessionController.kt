@@ -36,14 +36,6 @@ class SessionController(
       val success = SessionResult(SessionResult.RESULT_SUCCESS)
 
       return when (action) {
-          PlaybackConstants.Commands.SYNC_PROGRESS_FORCE -> {
-              playerProvider()?.takeIf { it.isPlaying }?.pause()
-              val latch = java.util.concurrent.CountDownLatch(1)
-              syncProgress("switch", true) { latch.countDown() }
-              latch.await(SYNC_LATCH_TIMEOUT_SEC, java.util.concurrent.TimeUnit.SECONDS)
-              success
-          }
-
           PlaybackConstants.Commands.CYCLE_PLAYBACK_SPEED -> {
               cyclePlaybackSpeed?.invoke()
               success
@@ -172,6 +164,16 @@ class SessionController(
 
   fun closePlayback(afterStop: (() -> Unit)?): Unit = closePlaybackCallback(afterStop)
 
+  /**
+   * Pauses playback (if playing) and forces a progress sync for the current session.
+   * Asynchronous: [onComplete] fires once the sync has finished, so callers can sequence
+   * a new session behind it without blocking the session callback thread.
+   */
+  fun forceSyncProgress(onComplete: () -> Unit) {
+    playerProvider()?.takeIf { it.isPlaying }?.pause()
+    syncProgress("switch", true) { onComplete() }
+  }
+
   fun buildPlayerCommands(
     controllerInfo: MediaSession.ControllerInfo,
     allowSeekingOnMediaControls: Boolean
@@ -209,7 +211,6 @@ class SessionController(
 
   companion object {
     private const val CHAPTER_START_THRESHOLD_MS = 3_000L
-    private const val SYNC_LATCH_TIMEOUT_SEC = 2L
 
     // Bundle keys
     private const val KEY_CHAPTER_START_MS = "chapter_start_ms"

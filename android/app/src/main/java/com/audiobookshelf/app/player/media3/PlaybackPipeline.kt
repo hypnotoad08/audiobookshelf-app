@@ -6,8 +6,10 @@ import androidx.media3.cast.CastPlayer
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
 import androidx.media3.common.util.UnstableApi
+import androidx.core.net.toUri
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
+import androidx.media3.datasource.ResolvingDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
@@ -64,10 +66,19 @@ class PlaybackPipeline(
 
     val httpDataSourceFactory = DefaultHttpDataSource.Factory()
       .setUserAgent(PlaybackConstants.MEDIA3_NOTIFICATION_CHANNEL_ID)
-      .setDefaultRequestProperties(
-        hashMapOf("Authorization" to "Bearer ${DeviceManager.token}")
-      )
-    val dataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
+    val baseDataSourceFactory = DefaultDataSource.Factory(context, httpDataSourceFactory)
+    // Resolve the Authorization header per request: the player outlives token refreshes and
+    // server switches, so a factory-level default header goes stale. Scoping it to the
+    // connected server's host also keeps the bearer token off any third-party URI.
+    val dataSourceFactory = ResolvingDataSource.Factory(baseDataSourceFactory) { dataSpec ->
+      val token = DeviceManager.token
+      val serverHost = DeviceManager.serverAddress.toUri().host
+      if (token.isNotEmpty() && serverHost != null && dataSpec.uri.host == serverHost) {
+        dataSpec.withAdditionalHeaders(mapOf("Authorization" to "Bearer $token"))
+      } else {
+        dataSpec
+      }
+    }
 
     val loadErrorHandlingPolicy = object : DefaultLoadErrorHandlingPolicy(MAX_RETRY_ATTEMPTS) {
       override fun getRetryDelayMsFor(loadErrorInfo: LoadErrorHandlingPolicy.LoadErrorInfo): Long {

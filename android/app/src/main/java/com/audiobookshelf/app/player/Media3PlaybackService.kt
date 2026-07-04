@@ -802,11 +802,19 @@ class Media3PlaybackService : MediaLibraryService() {
   }
 
   private fun handlePlaybackResumed(pauseDurationMs: Long) {
-    if (pauseDurationMs < PAUSE_LEN_BEFORE_RECHECK_MS) return
-    if (!DeviceManager.checkConnectivity(applicationContext)) return
     val session = currentPlaybackSession ?: return
     val seekBackTimeMs =
       if (deviceSettings.disableAutoRewind) 0L else calcPauseSeekBackTime(pauseDurationMs)
+
+    // Short pause or offline: apply the auto-rewind locally without a server progress recheck
+    if (pauseDurationMs < PAUSE_LEN_BEFORE_RECHECK_MS ||
+      !DeviceManager.checkConnectivity(applicationContext)
+    ) {
+      if (seekBackTimeMs > 0) {
+        seekBackwardWithinSession(seekBackTimeMs, session)
+      }
+      return
+    }
 
     if (session.isLocal) {
       val serverConfig = DeviceManager.getServerConnectionConfig(session.serverConnectionConfigId)
@@ -865,7 +873,10 @@ class Media3PlaybackService : MediaLibraryService() {
 
   private fun seekBackwardWithinSession(amountMs: Long, session: PlaybackSession) {
     if (amountMs <= 0) return
-    val targetPosition = (session.currentTimeMs - amountMs).coerceAtLeast(0L)
+    updateCurrentPosition(session)
+    // Clamp to the current chapter start so the rewind never crosses into the previous chapter
+    val chapterStartMs = session.getChapterForTime(session.currentTimeMs)?.startMs ?: 0L
+    val targetPosition = (session.currentTimeMs - amountMs).coerceAtLeast(chapterStartMs)
     session.currentTime = targetPosition / 1000.0
     seekToSessionPosition(session)
   }

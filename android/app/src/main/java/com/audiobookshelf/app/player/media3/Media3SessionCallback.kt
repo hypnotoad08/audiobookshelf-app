@@ -212,6 +212,17 @@ class Media3SessionCallback(
         return future
       }
 
+      PlaybackConstants.Commands.SYNC_PROGRESS_FORCE -> {
+        // Async so the session callback thread (main) is never blocked; the future completes
+        // once the sync finishes, letting callers sequence a new session behind the old
+        // session's final server sync.
+        val future = SettableFuture.create<SessionResult>()
+        sessionController?.forceSyncProgress {
+          future.set(SessionResult(SessionResult.RESULT_SUCCESS))
+        } ?: future.set(SessionResult(SessionError.ERROR_UNKNOWN))
+        return future
+      }
+
       PlaybackConstants.Commands.MARK_UI_PLAYBACK_EVENT -> {
         markNextPlaybackEventSourceUi?.invoke()
         return Futures.immediateFuture(SessionResult(SessionResult.RESULT_SUCCESS))
@@ -272,13 +283,8 @@ class Media3SessionCallback(
           Log.w(logTag, "Failed to log resolvedPlayable URIs: ${t.message}")
         }
       }
-      val player = playerProvider()
-      player.setMediaItems(
-        resolvedPlayable.mediaItems,
-        resolvedPlayable.startIndex.coerceIn(0, resolvedPlayable.mediaItems.lastIndex),
-        resolvedPlayable.startPositionMs
-      )
-      player.prepare()
+      // Only return the resolved items: the session applies them to the player itself.
+      // Mutating the player here would double-add the queue for addMediaItems flows.
       return@future resolvedPlayable.mediaItems.toMutableList()
     }
   }
@@ -323,21 +329,28 @@ class Media3SessionCallback(
       browseApi.assignSession(resolvedPlayable.session)
 
       // Auto-restart logic: prevents awkward UX of resuming at the very end of a book
-      // If within 5s of completion, restart from beginning instead
+      // If within 5s of completion, restart from the first track instead.
+      // startPositionMs is relative to the start track, so compare using the absolute position.
+      var adjustedStartIndex =
+        resolvedPlayable.startIndex.coerceIn(0, resolvedPlayable.mediaItems.lastIndex)
       var adjustedStartPositionMs = resolvedPlayable.startPositionMs
-      val totalDurationMs = resolvedPlayable.session.totalDurationMs
-      if (totalDurationMs > 0 && (totalDurationMs - adjustedStartPositionMs) < FINISHED_BOOK_THRESHOLD_MS) {
+      val resolvedSession = resolvedPlayable.session
+      val totalDurationMs = resolvedSession.totalDurationMs
+      val absoluteStartMs =
+        resolvedSession.getTrackStartOffsetMs(adjustedStartIndex) + adjustedStartPositionMs
+      if (totalDurationMs > 0 && (totalDurationMs - absoluteStartMs) < FINISHED_BOOK_THRESHOLD_MS) {
           debug { "onSetMediaItems: Book is finished (within ${FINISHED_BOOK_THRESHOLD_MS}ms of end), resetting to start" }
+        adjustedStartIndex = 0
         adjustedStartPositionMs = 0L
       }
 
         debug {
-            "onSetMediaItems: resolved ${resolvedPlayable.mediaItems.size} items for session=${resolvedPlayable.session.id} " +
-                    "startIndex=${resolvedPlayable.startIndex} startPos=$adjustedStartPositionMs"
+            "onSetMediaItems: resolved ${resolvedPlayable.mediaItems.size} items for session=${resolvedSession.id} " +
+                    "startIndex=$adjustedStartIndex startPos=$adjustedStartPositionMs"
       }
       MediaSession.MediaItemsWithStartPosition(
         resolvedPlayable.mediaItems,
-        resolvedPlayable.startIndex,
+        adjustedStartIndex,
         adjustedStartPositionMs
       )
     }
