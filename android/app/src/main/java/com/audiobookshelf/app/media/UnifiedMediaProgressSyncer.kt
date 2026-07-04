@@ -57,8 +57,6 @@ class UnifiedMediaProgressSyncer(
   private var failedSyncs: Int = 0
   private var serverSessionClosed: Boolean = false
   private var playbackEventSource = PlaybackEventSource.SYSTEM
-  private var pendingPlaybackTime: Double? = null
-  private var pendingPlaybackTimeExpiry: Long = 0
 
   fun markNextPlaybackEventSource(source: PlaybackEventSource) {
     playbackEventSource = source
@@ -135,7 +133,6 @@ class UnifiedMediaProgressSyncer(
         sync(true, currentTime, force = true) { syncResult ->
           currentPlaybackSession?.let { session ->
             playbackEventSource = PlaybackEventSource.SYSTEM
-            applyRefreshedTimeToSession(session)
             onPlaybackEvent("pause", session, syncResult)
           }
           onComplete()
@@ -143,7 +140,6 @@ class UnifiedMediaProgressSyncer(
       } else {
         currentPlaybackSession?.let { session ->
           playbackEventSource = PlaybackEventSource.SYSTEM
-          applyRefreshedTimeToSession(session)
           onPlaybackEvent("pause", session, null)
         }
         onComplete()
@@ -163,7 +159,6 @@ class UnifiedMediaProgressSyncer(
         failedSyncs = 0
         currentPlaybackSession?.let { session ->
           playbackEventSource = PlaybackEventSource.SYSTEM
-          applyRefreshedTimeToSession(session)
           onPlaybackEvent("pause", session, syncResult)
         }
         onComplete()
@@ -173,7 +168,6 @@ class UnifiedMediaProgressSyncer(
       failedSyncs = 0
       currentPlaybackSession?.let { session ->
         playbackEventSource = PlaybackEventSource.SYSTEM
-        applyRefreshedTimeToSession(session)
         onPlaybackEvent("pause", session, null)
       }
       onComplete()
@@ -293,7 +287,10 @@ class UnifiedMediaProgressSyncer(
 
     val lastSyncedPlaybackTime = currentPlaybackSession?.currentTime ?: 0.0
     val playbackTimeDeltaSeconds = currentTime - lastSyncedPlaybackTime
-    if (timeSinceLastSyncMillis in 1000L..5000L && playbackTimeDeltaSeconds <= 0.5) {
+    // Forced syncs (pause/close/switch finals) must never be debounced: syncNow refreshes the
+    // session's currentTime before calling sync, so the delta here is always ~0 for them and
+    // skipping would drop the last few seconds of listening progress.
+    if (!force && timeSinceLastSyncMillis in 1000L..5000L && playbackTimeDeltaSeconds <= 0.5) {
       Log.v(
           TAG,
         "sync: Skip; recent sync ($timeSinceLastSyncMillis ms ago) with no progress (delta=$playbackTimeDeltaSeconds s)"
@@ -447,14 +444,6 @@ class UnifiedMediaProgressSyncer(
     }
   }
 
-  private fun applyRefreshedTimeToSession(session: PlaybackSession) {
-    val pendingTime = pendingPlaybackTime
-    if (pendingTime != null && System.currentTimeMillis() <= pendingPlaybackTimeExpiry) {
-      session.currentTime = pendingTime
-    }
-    pendingPlaybackTime = null
-  }
-
   fun syncNow(
     event: String,
     session: PlaybackSession,
@@ -470,7 +459,7 @@ class UnifiedMediaProgressSyncer(
     }
     val currentTime =
       playbackTelemetryProvider.getCurrentTimeSeconds().takeIf { it > 0 } ?: session.currentTime
-    sync(shouldSyncServer, currentTime) { result ->
+    sync(shouldSyncServer, currentTime, force = true) { result ->
         val deliverCompletion = {
             if (result!=null) {
                 onPlaybackEvent(event, requestSession, result)
