@@ -29,6 +29,7 @@ class Media3BrowseDataLoader(private val mediaManager: MediaManager) {
 
   private val authorBooksRequests: MutableMap<String, Deferred<List<LibraryItem>>> = mutableMapOf()
   private val seriesItemsRequests: MutableMap<String, Deferred<List<LibraryItem>>> = mutableMapOf()
+  private val discoveryBooksRequests: MutableMap<String, Deferred<List<LibraryItem>>> = mutableMapOf()
     private val collectionBooksRequests: MutableMap<String, Deferred<List<LibraryItem>>> = mutableMapOf()
     private val authorsListRequests: MutableMap<String, Deferred<List<LibraryAuthorItem>>> = mutableMapOf()
     private val seriesListRequests: MutableMap<String, Deferred<List<LibrarySeriesItem>>> = mutableMapOf()
@@ -159,7 +160,7 @@ class Media3BrowseDataLoader(private val mediaManager: MediaManager) {
     }
 
     suspend fun loadLibraryDiscoveryBooksWithAudio(libraryId: String): List<LibraryItem> =
-        coalescedLoad(seriesItemsRequests, libraryId) {
+        coalescedLoad(discoveryBooksRequests, libraryId) {
             withMediaManagerCallback {
         mediaManager.loadLibraryDiscoveryBooksWithAudio(libraryId) { result ->
             debugLog("discovery loaded library=$libraryId count=${result.size}")

@@ -60,7 +60,6 @@ import kotlinx.coroutines.runBlocking
 
 const val PLAYER_CAST = "cast-player"
 const val PLAYER_EXO = "exo-player"
-const val PLAYER_MEDIA3 = "media3-exoplayer"
 
 class PlayerNotificationService : MediaBrowserServiceCompat(), PlaybackTelemetryHost {
 

@@ -66,13 +66,19 @@ class Media3SessionCallback(
 
   companion object {
     private const val FINISHED_BOOK_THRESHOLD_MS = 5_000L
+    private const val SEARCH_CACHE_MAX_QUERIES = 20
   }
 
   private val searchCache = ConcurrentHashMap<String, List<MediaItem>>()
-  private fun isWearController(controllerInfo: MediaSession.ControllerInfo): Boolean {
-    val pkg = controllerInfo.packageName.lowercase()
-    return pkg.contains("wear") || pkg.contains("com.google.android.apps.wear")
+
+  private fun cacheSearchResults(query: String, results: List<MediaItem>) {
+    // Crude bound: search queries are session-scoped, so dropping the cache is cheap
+    if (searchCache.size >= SEARCH_CACHE_MAX_QUERIES) searchCache.clear()
+    searchCache[query] = results
   }
+
+  private fun isWearController(controllerInfo: MediaSession.ControllerInfo): Boolean =
+    PlaybackConstants.isWearController(controllerInfo.packageName)
 
   /* ======== Session Management ======== */
 
@@ -115,7 +121,9 @@ class Media3SessionCallback(
     session: MediaSession,
     controller: MediaSession.ControllerInfo
   ): MediaSession.ConnectionResult {
-    // Reject system UI to prevent MediaResumeListener connection delays
+    // Deliberate tradeoff: rejecting SystemUI's MediaResumeListener avoids its slow connection
+    // handshake delaying playback start, at the cost of post-reboot/dead-app media resumption
+    // from quick settings. Media notification controls are unaffected (they use the session token).
     if (controller.packageName == "com.android.systemui") {
       debug { "Rejecting MediaSession connection from system UI" }
       return MediaSession.ConnectionResult.reject()
@@ -124,7 +132,8 @@ class Media3SessionCallback(
     val player = playerProvider()
     (player as? AbsPlayerWrapper)?.mapSkipToSeek = isWearController(controller)
 
-    val isAppUiController = controller.connectionHints.getBoolean("isAppUiController", false)
+    val isAppUiController =
+      controller.connectionHints.getBoolean(PlaybackConstants.KEY_IS_APP_UI_CONTROLLER, false)
 
     val playerCommands = sessionController?.buildPlayerCommands(
       controllerInfo = controller,
@@ -412,7 +421,7 @@ class Media3SessionCallback(
         return@future LibraryResult.ofVoid()
       }
       val results = performSearch(query)
-      searchCache[query] = results
+      cacheSearchResults(query, results)
       session.notifySearchResultChanged(browser, query, results.size, params)
       LibraryResult.ofVoid()
     }
@@ -429,7 +438,7 @@ class Media3SessionCallback(
     return scope.future {
         val results = searchCache[query] ?: run {
         val computed = performSearch(query)
-        searchCache[query] = computed
+        cacheSearchResults(query, computed)
             computed
       }
       session.notifySearchResultChanged(browser, query, results.size, params)

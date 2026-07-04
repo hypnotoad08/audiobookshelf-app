@@ -23,6 +23,7 @@ import com.audiobookshelf.app.data.PlaybackMetadata
 import com.audiobookshelf.app.data.PlaybackSession
 import com.audiobookshelf.app.data.PlayerState
 import com.audiobookshelf.app.player.Media3PlaybackService
+import com.audiobookshelf.app.player.PLAYER_CAST
 import com.audiobookshelf.app.player.PlaybackConstants
 import com.audiobookshelf.app.player.toMedia3MediaItems
 import com.google.common.util.concurrent.FutureCallback
@@ -124,7 +125,7 @@ class PlaybackController(private val context: Context) {
     // Add connection hint to identify this as the app's UI controller
     // This allows the session to differentiate the app UI from other controllers (notification, wear, etc)
     val connectionHints = Bundle().apply {
-      putBoolean(KEY_IS_APP_UI_CONTROLLER, true)
+      putBoolean(PlaybackConstants.KEY_IS_APP_UI_CONTROLLER, true)
     }
     val future = MediaController.Builder(applicationContext, sessionToken)
       .setConnectionHints(connectionHints)
@@ -349,7 +350,7 @@ class PlaybackController(private val context: Context) {
 
   private fun maybeEmitMediaPlayerFromExtras() {
     val mediaPlayer =
-      mediaController?.sessionExtras?.getString(KEY_MEDIA_PLAYER)
+      mediaController?.sessionExtras?.getString(PlaybackConstants.MEDIA_PLAYER)
     if (!mediaPlayer.isNullOrEmpty() && mediaPlayer != currentMediaPlayer) {
       currentMediaPlayer = mediaPlayer
       activePlaybackSession?.let { session ->
@@ -729,13 +730,8 @@ class PlaybackController(private val context: Context) {
 
   companion object {
       private const val TAG = "PlaybackController"
-      private const val PLAYER_CAST = "cast-player"
     private const val PROGRESS_UPDATE_INTERVAL_MS = 1_000L
     private const val CONNECTION_TIMEOUT_SEC = 2L
-
-    // Bundle keys
-    private const val KEY_MEDIA_PLAYER = "media_player"
-    private const val KEY_IS_APP_UI_CONTROLLER = "isAppUiController"
 
     private val DEFAULT_SUCCESS_RESULT = SessionResult(SessionResult.RESULT_SUCCESS)
     private val UNKNOWN_ERROR_RESULT = SessionResult(SessionError.ERROR_UNKNOWN)

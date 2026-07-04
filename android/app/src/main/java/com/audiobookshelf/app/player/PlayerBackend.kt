@@ -1,14 +1,10 @@
 package com.audiobookshelf.app.player
 
-import android.annotation.SuppressLint
 import android.content.Context
-import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.provider.Settings
 import android.util.Log
 import androidx.media3.common.util.UnstableApi
-import com.audiobookshelf.app.BuildConfig
 import com.audiobookshelf.app.MainActivity
 import com.audiobookshelf.app.data.DeviceInfo
 import com.audiobookshelf.app.data.PlayItemRequestPayload
@@ -205,17 +201,7 @@ class Media3PlayerBackend(
   private var activePlaybackSession: PlaybackSession? = null
   private var lastKnownMediaPlayer: String? = null
 
-  @SuppressLint("HardwareIds")
-  override fun getDeviceInfo(): DeviceInfo {
-    val deviceId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
-    return DeviceInfo(
-      deviceId,
-      Build.MANUFACTURER,
-      Build.MODEL,
-      Build.VERSION.SDK_INT,
-      BuildConfig.VERSION_NAME
-    )
-  }
+  override fun getDeviceInfo(): DeviceInfo = PlaybackConstants.buildDeviceInfo(context)
 
   override fun getPlayItemRequestPayload(forceTranscode: Boolean): PlayItemRequestPayload {
     return PlayItemRequestPayload(

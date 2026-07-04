@@ -1,16 +1,12 @@
 package com.audiobookshelf.app.player.media3
 
 import android.content.Context
-import android.os.Build
-import android.provider.Settings
 import androidx.annotation.OptIn
 import androidx.media3.common.MediaItem
 import androidx.media3.common.MediaMetadata
 import androidx.media3.common.util.Log
 import androidx.media3.common.util.UnstableApi
-import com.audiobookshelf.app.BuildConfig
 import com.audiobookshelf.app.R
-import com.audiobookshelf.app.data.DeviceInfo
 import com.audiobookshelf.app.data.LibraryItemWrapper
 import com.audiobookshelf.app.data.PlayItemRequestPayload
 import com.audiobookshelf.app.data.PlaybackSession
@@ -18,6 +14,7 @@ import com.audiobookshelf.app.data.PodcastEpisode
 import com.audiobookshelf.app.media.MediaManager
 import com.audiobookshelf.app.media.getUriToAbsIconDrawable
 import com.audiobookshelf.app.player.PLAYER_MEDIA3
+import com.audiobookshelf.app.player.PlaybackConstants
 import com.audiobookshelf.app.player.toMedia3MediaItems
 import com.google.common.collect.ImmutableList
 import kotlinx.coroutines.Dispatchers
@@ -45,17 +42,6 @@ class Media3BrowseTree(
     val startIndex: Int,
     val startPositionMs: Long
   )
-
-  private fun toDeviceInfo(): DeviceInfo {
-    val deviceId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
-    return DeviceInfo(
-      deviceId = deviceId,
-      manufacturer = Build.MANUFACTURER,
-      model = Build.MODEL,
-      sdkVersion = Build.VERSION.SDK_INT,
-      clientVersion = BuildConfig.VERSION_NAME
-    )
-  }
 
   /**
    * Resolves a media ID to a playable item by finding the target, requesting a session, and converting to MediaItems.
@@ -151,7 +137,7 @@ class Media3BrowseTree(
       mediaPlayer = PLAYER_MEDIA3,
       forceDirectPlay = true,
       forceTranscode = false,
-      deviceInfo = toDeviceInfo()
+      deviceInfo = PlaybackConstants.buildDeviceInfo(context)
     )
 
     val onSessionResult = { session: PlaybackSession? ->

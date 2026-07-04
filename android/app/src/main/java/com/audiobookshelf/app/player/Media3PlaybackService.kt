@@ -40,17 +40,10 @@ class Media3PlaybackService : MediaLibraryService() {
     // Sync & timeout settings
     private const val TASK_REMOVAL_CLOSE_TIMEOUT_MS = 5_000L
     private const val FINAL_SYNC_TIMEOUT_MS = 500L
-    private const val ONBOARDING_SYNC_TIMEOUT_SEC = 1L
+    private const val DESTROY_FINAL_SYNC_TIMEOUT_SEC = 1L
 
     // Playback recheck settings
     private const val PAUSE_LEN_BEFORE_RECHECK_MS = 30_000L
-
-    // Player identifiers - must match values in PlayerNotificationService for server compatibility
-    private const val PLAYER_MEDIA3 = "media3-exoplayer"
-    private const val PLAYER_CAST = "cast-player"
-
-    // Bundle keys
-    private const val KEY_IS_APP_UI_CONTROLLER = "isAppUiController"
   }
 
   // Lifecycle & Scope
@@ -266,7 +259,7 @@ class Media3PlaybackService : MediaLibraryService() {
             shouldSyncServer = true,
             callbackOnMainThread = false
         ) { latch.countDown() }
-        latch.await(ONBOARDING_SYNC_TIMEOUT_SEC, java.util.concurrent.TimeUnit.SECONDS)
+        latch.await(DESTROY_FINAL_SYNC_TIMEOUT_SEC, java.util.concurrent.TimeUnit.SECONDS)
 
         // Close session on server if not local
         if (!session.isLocal && session.id.isNotEmpty()) {
@@ -675,7 +668,12 @@ class Media3PlaybackService : MediaLibraryService() {
             val newMetadata = currentItem.mediaMetadata.buildUpon()
                 .setArtist(artistLine)
                 .build()
-            player.replaceMediaItem(trackIndex, currentItem.buildUpon().setMediaMetadata(newMetadata).build())
+            // Replace at the player's own index: currentItem came from the player, and the
+            // session-resolved trackIndex could disagree with the queue position (e.g. cast reload)
+            player.replaceMediaItem(
+                player.currentMediaItemIndex,
+                currentItem.buildUpon().setMediaMetadata(newMetadata).build()
+            )
         }
     }
 
@@ -1135,15 +1133,10 @@ class Media3PlaybackService : MediaLibraryService() {
       .setSessionActivity(sessionActivityIntent)
       .build()
 
-      if (!::player.isInitialized) {
-          throw IllegalStateException("Fatal: player could not be initialized.")
-    }
-
       val currentPlayer = player
       if (currentPlayer is AbsPlayerWrapper) {
           currentPlayer.mapSkipToSeek = true
       }
-    playerInitialized = true
 
     mediaSession?.sessionExtras = Bundle().apply {
       putBoolean(MediaConstants.EXTRAS_KEY_SLOT_RESERVATION_SEEK_TO_PREV, false)
@@ -1177,7 +1170,7 @@ class Media3PlaybackService : MediaLibraryService() {
         runCatching {
             val player = if (this::player.isInitialized) this.player else null
           val isAppUiController =
-            controllerInfo.connectionHints.getBoolean(KEY_IS_APP_UI_CONTROLLER, false)
+            controllerInfo.connectionHints.getBoolean(PlaybackConstants.KEY_IS_APP_UI_CONTROLLER, false)
           val effectiveAllowSeeking = isAppUiController || allowSeekingOnMediaControls
 
           val playerCommands =
@@ -1327,7 +1320,7 @@ class Media3PlaybackService : MediaLibraryService() {
     val isPlaying = isPlayingOverride ?: isEffectivelyPlaying()
     var absolutePosition = session.currentTimeMs
     if (playerInitialized) {
-        val trackIndex = player.currentMediaItemIndex
+        val trackIndex = resolveTrackIndexForPlayer(session, player)
       val trackOffset = session.getTrackStartOffsetMs(trackIndex)
         absolutePosition = (player.currentPosition + trackOffset).coerceAtLeast(0L)
     }
@@ -1378,24 +1371,13 @@ class Media3PlaybackService : MediaLibraryService() {
     if (BuildConfig.DEBUG) Log.d(TAG, lazyMessage())
   }
 
-  private fun getDeviceInfo(): DeviceInfo {
-    val deviceId = Settings.Secure.getString(contentResolver, Settings.Secure.ANDROID_ID)
-    return DeviceInfo(
-      deviceId,
-      Build.MANUFACTURER,
-      Build.MODEL,
-      Build.VERSION.SDK_INT,
-      BuildConfig.VERSION_NAME
-    )
-  }
-
   private fun getPlayItemRequestPayload(forceTranscode: Boolean): PlayItemRequestPayload {
     val mediaPlayerId = currentMediaPlayerId()
     return PlayItemRequestPayload(
       mediaPlayerId,
       forceDirectPlay = !forceTranscode,
       forceTranscode = forceTranscode,
-      deviceInfo = getDeviceInfo()
+      deviceInfo = PlaybackConstants.buildDeviceInfo(this)
     )
   }
 

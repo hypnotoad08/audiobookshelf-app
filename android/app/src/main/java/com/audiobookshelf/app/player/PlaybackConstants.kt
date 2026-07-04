@@ -1,13 +1,45 @@
 package com.audiobookshelf.app.player
 
+import android.annotation.SuppressLint
+import android.content.Context
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.media3.session.SessionCommand
+import com.audiobookshelf.app.BuildConfig
+import com.audiobookshelf.app.data.DeviceInfo
+
+/**
+ * Player id reported to the server for Media3 playback. Deliberately distinct from
+ * PLAYER_EXO ("exo-player") so server-side sessions/stats can tell the two stacks apart.
+ */
+const val PLAYER_MEDIA3 = "media3-exoplayer"
 
 object PlaybackConstants {
   // Intent/command extras used when sending playback commands or building media items
   const val DISPLAY_SPEED = "display_speed"
   const val MEDIA_PLAYER = "media_player"
   const val MEDIA3_NOTIFICATION_CHANNEL_ID = "media3_playback_channel"
+
+  /** Connection hint marking the app's own UI MediaController (vs notification/Auto/Wear controllers) */
+  const val KEY_IS_APP_UI_CONTROLLER = "isAppUiController"
+
+  /** Single predicate for detecting Wear OS controllers so command sets and skip-to-seek mapping agree */
+  fun isWearController(packageName: String): Boolean =
+    packageName.contains("wear", ignoreCase = true)
+
+  /** Device info for server play request payloads; shared by the Media3 service, browse tree, and backend */
+  @SuppressLint("HardwareIds")
+  fun buildDeviceInfo(context: Context): DeviceInfo {
+    val deviceId = Settings.Secure.getString(context.contentResolver, Settings.Secure.ANDROID_ID)
+    return DeviceInfo(
+      deviceId,
+      Build.MANUFACTURER,
+      Build.MODEL,
+      Build.VERSION.SDK_INT,
+      BuildConfig.VERSION_NAME
+    )
+  }
 
   object Commands {
     const val CYCLE_PLAYBACK_SPEED = "com.audiobookshelf.app.player.CYCLE_PLAYBACK_SPEED"
