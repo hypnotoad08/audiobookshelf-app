@@ -17,7 +17,6 @@ import com.audiobookshelf.app.media.*
 import com.audiobookshelf.app.media.SyncResult
 import com.audiobookshelf.app.player.*
 import com.audiobookshelf.app.player.core.*
-import com.audiobookshelf.app.player.wrapper.AbsPlayerWrapper
 import com.audiobookshelf.app.server.ApiHandler
 import kotlinx.coroutines.*
 import kotlin.math.*
@@ -1024,11 +1023,6 @@ class Media3PlaybackService : MediaLibraryService(), Media3ServiceHost, Playback
       .setId(sessionId)
       .setSessionActivity(sessionActivityIntent)
       .build()
-
-      val currentPlayer = player
-      if (currentPlayer is AbsPlayerWrapper) {
-          currentPlayer.mapSkipToSeek = true
-      }
 
     mediaSession?.sessionExtras = Bundle().apply {
       putBoolean(MediaConstants.EXTRAS_KEY_SLOT_RESERVATION_SEEK_TO_PREV, false)

@@ -120,7 +120,7 @@ class PlaybackPipeline(
         }
 
     val listener = buildListener()
-        val wrapper = AbsPlayerWrapper(playerWithCast, context).apply { addListener(listener) }
+        val wrapper = AbsPlayerWrapper(playerWithCast).apply { addListener(listener) }
         onPlayerReady(wrapper)
         log { "Player initialized with cast support via CastPlayer.Builder." }
         return wrapper

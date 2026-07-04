@@ -19,7 +19,6 @@ import com.audiobookshelf.app.BuildConfig
 import com.audiobookshelf.app.data.PlaybackSession
 import com.audiobookshelf.app.media.MediaManager
 import com.audiobookshelf.app.player.PlaybackConstants
-import com.audiobookshelf.app.player.wrapper.AbsPlayerWrapper
 import com.google.common.collect.ImmutableList
 import com.google.common.util.concurrent.Futures
 import com.google.common.util.concurrent.ListenableFuture
@@ -130,7 +129,6 @@ class Media3SessionCallback(
     }
 
     val player = playerProvider()
-    (player as? AbsPlayerWrapper)?.mapSkipToSeek = isWearController(controller)
 
     val isAppUiController =
       controller.connectionHints.getBoolean(PlaybackConstants.KEY_IS_APP_UI_CONTROLLER, false)
