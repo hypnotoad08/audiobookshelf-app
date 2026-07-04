@@ -19,17 +19,7 @@ import com.audiobookshelf.app.player.PlaybackConstants
 @UnstableApi
 class SessionController(
   val availableSessionCommands: SessionCommands,
-  private val setSleepTimer: (sessionId: String, timeMs: Long, isChapter: Boolean) -> Unit,
-  private val cancelSleepTimer: () -> Unit,
-  private val adjustSleepTimer: (deltaMs: Long, increase: Boolean) -> Unit,
-  private val getSleepTimerTime: () -> Long,
-  private val resyncSleepTimerState: () -> Unit,
-  private val cyclePlaybackSpeed: (() -> Unit)?,
-  private val getCurrentSession: (() -> PlaybackSession?)?,
-  private val currentAbsolutePositionMs: (() -> Long?)?,
-  private val syncProgress: (reason: String, force: Boolean, onComplete: (() -> Unit)?) -> Unit,
-  private val closePlaybackCallback: (afterStop: (() -> Unit)?) -> Unit,
-  private val playerProvider: () -> Player?
+  private val host: Media3ServiceHost
 ) {
   fun onCustomCommand(command: SessionCommand, commandData: Bundle?): SessionResult {
       val action = command.customAction
@@ -37,55 +27,55 @@ class SessionController(
 
       return when (action) {
           PlaybackConstants.Commands.CYCLE_PLAYBACK_SPEED -> {
-              cyclePlaybackSpeed?.invoke()
+              host.cyclePlaybackSpeed()
               success
           }
 
           PlaybackConstants.Commands.SEEK_BACK_INCREMENT -> {
-              playerProvider()?.seekBack()
+              host.playerOrNull()?.seekBack()
               success
           }
 
           PlaybackConstants.Commands.SEEK_FORWARD_INCREMENT -> {
-              playerProvider()?.seekForward()
+              host.playerOrNull()?.seekForward()
               success
           }
 
           PlaybackConstants.Commands.SEEK_TO_PREVIOUS_TRACK -> {
-              playerProvider()?.seekToPreviousMediaItem()
+              host.playerOrNull()?.seekToPreviousMediaItem()
               success
           }
 
           PlaybackConstants.Commands.SEEK_TO_NEXT_TRACK -> {
-              playerProvider()?.seekToNextMediaItem()
+              host.playerOrNull()?.seekToNextMediaItem()
               success
           }
 
           PlaybackConstants.Commands.SEEK_TO_PREVIOUS_CHAPTER -> {
-              val session = getCurrentSession?.invoke()
-              val absolutePositionMs = currentAbsolutePositionMs?.invoke()
+              val session = host.currentSession()
+              val absolutePositionMs = host.currentAbsolutePositionMs()
               if (session!=null && absolutePositionMs!=null) {
                   val targetChapter = resolvePreviousChapter(session, absolutePositionMs)
                   if (targetChapter!=null) {
-                      playerProvider()?.seekTo(targetChapter.startMs)
+                      host.playerOrNull()?.seekTo(targetChapter.startMs)
                       return success
                   }
               }
-              playerProvider()?.seekBack()
+              host.playerOrNull()?.seekBack()
               success
           }
 
           PlaybackConstants.Commands.SEEK_TO_NEXT_CHAPTER -> {
-              val session = getCurrentSession?.invoke()
-              val absolutePositionMs = currentAbsolutePositionMs?.invoke()
+              val session = host.currentSession()
+              val absolutePositionMs = host.currentAbsolutePositionMs()
               if (session!=null && absolutePositionMs!=null) {
                   val targetChapter = session.getNextChapterForTime(absolutePositionMs)
                   if (targetChapter!=null) {
-                      playerProvider()?.seekTo(targetChapter.startMs)
+                      host.playerOrNull()?.seekTo(targetChapter.startMs)
                       return success
                   }
               }
-              playerProvider()?.seekForward()
+              host.playerOrNull()?.seekForward()
               success
           }
 
@@ -93,7 +83,7 @@ class SessionController(
               val chapterStartMs =
                   commandData?.getLong(KEY_CHAPTER_START_MS, Long.MIN_VALUE) ?: Long.MIN_VALUE
               if (chapterStartMs >= 0L) {
-                  playerProvider()?.seekTo(chapterStartMs)
+                  host.playerOrNull()?.seekTo(chapterStartMs)
                   success
               } else {
                   SessionResult(SessionError.ERROR_BAD_VALUE)
@@ -107,12 +97,12 @@ class SessionController(
                   ?: false
               val sessionId = commandData?.getString(PlaybackConstants.SleepTimer.EXTRA_SESSION_ID)
                   ?: ""
-              setSleepTimer(sessionId, timeMs, isChapter)
+              host.setSleepTimer(sessionId, timeMs, isChapter)
               success
           }
 
           PlaybackConstants.SleepTimer.ACTION_CANCEL -> {
-              cancelSleepTimer()
+              host.cancelSleepTimer()
               success
           }
 
@@ -122,12 +112,12 @@ class SessionController(
               val increase = commandData?.getBoolean(PlaybackConstants.SleepTimer.EXTRA_ADJUST_INCREASE, true)
                   ?: true
               if (deltaMs <= 0L) return SessionResult(SessionError.ERROR_BAD_VALUE)
-              adjustSleepTimer(deltaMs, increase)
+              host.adjustSleepTimer(deltaMs, increase)
               success
           }
 
           PlaybackConstants.SleepTimer.ACTION_GET_TIME -> {
-              val remainingSleepTimeMs = getSleepTimerTime()
+              val remainingSleepTimeMs = host.getSleepTimerTimeMs()
               SessionResult(
                   SessionResult.RESULT_SUCCESS,
                   Bundle().apply { putLong(PlaybackConstants.SleepTimer.EXTRA_TIME_MS, remainingSleepTimeMs) }
@@ -135,12 +125,12 @@ class SessionController(
           }
 
           PlaybackConstants.Commands.RESYNC_SLEEP_TIMER -> {
-              resyncSleepTimerState()
+              host.resyncSleepTimerState()
               success
           }
 
           PlaybackConstants.Commands.CLOSE_PLAYBACK -> {
-              closePlaybackCallback(null)
+              host.closePlayback()
               success
           }
 
@@ -162,7 +152,7 @@ class SessionController(
     return if (isNearChapterStart && currentIndex > 0) chapters[currentIndex - 1] else currentChapter
   }
 
-  fun closePlayback(afterStop: (() -> Unit)?): Unit = closePlaybackCallback(afterStop)
+  fun closePlayback(afterStop: (() -> Unit)?): Unit = host.closePlayback(onPlaybackStopped = afterStop)
 
   /**
    * Pauses playback (if playing) and forces a progress sync for the current session.
@@ -170,8 +160,8 @@ class SessionController(
    * a new session behind it without blocking the session callback thread.
    */
   fun forceSyncProgress(onComplete: () -> Unit) {
-    playerProvider()?.takeIf { it.isPlaying }?.pause()
-    syncProgress("switch", true) { onComplete() }
+    host.playerOrNull()?.takeIf { it.isPlaying }?.pause()
+    host.maybeSyncProgress("switch", true) { onComplete() }
   }
 
   fun buildPlayerCommands(
@@ -179,7 +169,7 @@ class SessionController(
     allowSeekingOnMediaControls: Boolean
   ): Player.Commands {
 
-    val player = playerProvider()
+    val player = host.playerOrNull()
     if (player == null) {
       val fallbackCommands = Player.Commands.Builder()
         .add(Player.COMMAND_PLAY_PAUSE)

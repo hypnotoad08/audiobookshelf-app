@@ -1,4 +1,4 @@
-package com.audiobookshelf.app.player
+package com.audiobookshelf.app.player.media3
 
 import android.app.NotificationChannel
 import android.app.NotificationManager
@@ -11,8 +11,7 @@ import androidx.media3.session.CommandButton
 import androidx.media3.session.MediaSession
 import androidx.media3.session.SessionCommand
 import com.audiobookshelf.app.R
-import com.audiobookshelf.app.player.media3.CustomMediaNotificationProvider
-import com.audiobookshelf.app.player.media3.Media3PlaybackSpeedButtonProvider
+import com.audiobookshelf.app.player.PlaybackConstants
 import com.google.common.collect.ImmutableList
 
 @UnstableApi

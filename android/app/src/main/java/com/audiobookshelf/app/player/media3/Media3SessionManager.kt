@@ -1,10 +1,8 @@
-package com.audiobookshelf.app.player
+package com.audiobookshelf.app.player.media3
 
 import com.audiobookshelf.app.data.PlaybackSession
 import com.audiobookshelf.app.device.DeviceManager
 import com.audiobookshelf.app.media.MediaManager
-import com.audiobookshelf.app.media.SyncResult
-import com.audiobookshelf.app.player.core.PlaybackMetricsRecorder
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -18,25 +16,8 @@ import kotlinx.coroutines.launch
 class Media3SessionManager(
   private val serviceScope: CoroutineScope,
   private val mediaManager: MediaManager,
-  private val playbackMetrics: PlaybackMetricsRecorder,
-  private val playerControl: PlayerControl,
-  private val serviceCallbacks: ServiceCallbacks
+  private val host: Media3ServiceHost
 ) {
-
-    interface PlayerControl {
-        var isInitialized: Boolean
-        fun stop()
-        fun clearMediaItems()
-    }
-
-    interface ServiceCallbacks {
-        fun currentMediaPlayerId(): String
-        fun updateCurrentPosition(session: PlaybackSession)
-        fun maybeSyncProgress(reason: String, force: Boolean, session: PlaybackSession?, onComplete: ((SyncResult?) -> Unit)?)
-        fun notifyWidgetState(isPlaybackClosed: Boolean)
-        fun closeSessionOnServer(sessionId: String)
-        fun resetProgressSyncState()
-    }
   var currentPlaybackSession: PlaybackSession? = null
     private set
 
@@ -60,30 +41,30 @@ class Media3SessionManager(
     }
 
     // Ensure flags return to a ready state after a closePlayback call
-      playerControl.isInitialized = true
+      host.isPlayerInitialized = true
 
     val isNewSession = currentPlaybackSession?.id != session.id
     currentPlaybackSession = session
     DeviceManager.setLastPlaybackSession(session)
     mediaManager.updateLatestServerItemFromSession(session)
 
-      session.mediaPlayer = serviceCallbacks.currentMediaPlayerId()
+      session.mediaPlayer = host.currentMediaPlayerId()
 
     // Only reset metrics for NEW sessions, not player switches
     if (isNewSession) {
-      playbackMetrics.begin(session.mediaPlayer, session.mediaItemId)
+      host.playbackMetrics.begin(session.mediaPlayer, session.mediaItemId)
     }
 
-      serviceCallbacks.notifyWidgetState(false)
+      host.notifyWidgetState(false)
   }
 
   fun switchPlaybackSession(session: PlaybackSession, syncPreviousSession: Boolean = true) {
     markPlaybackSessionAssigned()
     val previous = currentPlaybackSession
     if (previous != null && previous.id != session.id) {
-        serviceCallbacks.updateCurrentPosition(previous)
+        host.updateCurrentPosition(previous)
       if (syncPreviousSession) {
-          serviceCallbacks.maybeSyncProgress("switch", true, previous) { _ -> }
+          host.maybeSyncProgress("switch", true, previous) { _ -> }
       }
     }
     assignPlaybackSession(session)
@@ -97,20 +78,22 @@ class Media3SessionManager(
 
       val tearDown = {
         serviceScope.launch(Dispatchers.Main) {
-          playbackMetrics.logSummary()
+          host.playbackMetrics.logSummary()
 
           if (!session.isLocal && session.id.isNotEmpty()) {
-              serviceCallbacks.closeSessionOnServer(session.id)
+              host.closeSessionOnServer(session.id)
           }
 
-            if (playerControl.isInitialized) {
-                playerControl.stop()
-                playerControl.clearMediaItems()
-                playerControl.isInitialized = false
+            if (host.isPlayerInitialized) {
+                host.playerOrNull()?.run {
+                    stop()
+                    clearMediaItems()
+                }
+                host.isPlayerInitialized = false
           }
-            serviceCallbacks.resetProgressSyncState()
+            host.resetProgressSyncState()
             currentPlaybackSession = null
-            serviceCallbacks.notifyWidgetState(true)
+            host.notifyWidgetState(true)
           signal.complete(Unit)
           closePlaybackSignal = null
           afterStop?.invoke()
@@ -121,8 +104,8 @@ class Media3SessionManager(
       if (calledOnError) {
         tearDown()
       } else {
-        serviceCallbacks.updateCurrentPosition(session)
-        serviceCallbacks.maybeSyncProgress("close", true, session) { _ -> tearDown() }
+        host.updateCurrentPosition(session)
+        host.maybeSyncProgress("close", true, session) { _ -> tearDown() }
       }
     } else {
       closePlaybackSignal?.complete(Unit)

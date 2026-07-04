@@ -21,7 +21,6 @@ import com.audiobookshelf.app.BuildConfig
 import com.audiobookshelf.app.data.PlaybackMetadata
 import com.audiobookshelf.app.data.PlaybackSession
 import com.audiobookshelf.app.data.PlayerState
-import com.audiobookshelf.app.player.Media3PlaybackService
 import com.audiobookshelf.app.player.PLAYER_CAST
 import com.audiobookshelf.app.player.PlaybackConstants
 import com.audiobookshelf.app.player.toMedia3MediaItems

@@ -577,7 +577,7 @@ class AbsDatabase : Plugin() {
       // Also notify Media3 playback service (if present) to refresh media session / notification commands
       try {
         val intent =
-          Intent(mainActivity, com.audiobookshelf.app.player.Media3PlaybackService::class.java)
+          Intent(mainActivity, com.audiobookshelf.app.player.media3.Media3PlaybackService::class.java)
         intent.action = "UPDATE_COMMANDS"
         mainActivity.startService(intent)
       } catch (t: Throwable) {

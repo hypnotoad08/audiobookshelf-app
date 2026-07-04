@@ -17,7 +17,7 @@ import androidx.media.session.MediaButtonReceiver
 import androidx.media3.common.util.UnstableApi
 import com.audiobookshelf.app.device.DeviceManager
 import com.audiobookshelf.app.managers.DbManager
-import com.audiobookshelf.app.player.Media3PlaybackService
+import com.audiobookshelf.app.player.media3.Media3PlaybackService
 import com.audiobookshelf.app.player.PlaybackConstants
 import com.audiobookshelf.app.player.WidgetPlaybackSnapshot
 import com.audiobookshelf.app.player.toWidgetSnapshot
