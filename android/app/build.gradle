@@ -54,9 +54,8 @@ android {
   productFlavors {
     exov2 {
       dimension "player"
-      applicationIdSuffix ".exov2"
-      versionNameSuffix "-exov2"
-      // ExoPlayer v2 backend
+      // Production player: keeps the plain application id so releases update existing installs.
+      // The media3 flavor is suffixed and installs alongside it for testing.
       buildConfigField("boolean", "USE_MEDIA3", "false")
       manifestPlaceholders = [ use_exov2: "true", use_media3: "false" ]
     }
