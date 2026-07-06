@@ -72,7 +72,7 @@ class PlaybackPipeline(
     // Resolve the Authorization header per request: the player outlives token refreshes and
     // server switches, so a factory-level default header goes stale. Scoping it to the
     // connected server's host also keeps the bearer token off any third-party URI.
-    val dataSourceFactory = ResolvingDataSource.Factory(baseDataSourceFactory) { dataSpec ->
+    val authenticatedDataSourceFactory = ResolvingDataSource.Factory(baseDataSourceFactory) { dataSpec ->
       val token = DeviceManager.token
       val serverHost = DeviceManager.serverAddress.toUri().host
       if (token.isNotEmpty() && serverHost != null && dataSpec.uri.host == serverHost) {
@@ -81,6 +81,10 @@ class PlaybackPipeline(
         dataSpec
       }
     }
+    val dataSourceFactory = buildMedia3PlaybackCacheDataSourceFactory(
+      context,
+      authenticatedDataSourceFactory
+    )
 
     val loadErrorHandlingPolicy = object : DefaultLoadErrorHandlingPolicy(MAX_RETRY_ATTEMPTS) {
       override fun getRetryDelayMsFor(loadErrorInfo: LoadErrorHandlingPolicy.LoadErrorInfo): Long {

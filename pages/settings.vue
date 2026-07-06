@@ -158,6 +158,11 @@
         <ui-text-input :value="streamingUsingCellularOption" readonly append-icon="expand_more" style="max-width: 200px" />
       </div>
     </div>
+    <div v-if="usesMedia3Player" class="py-3 flex items-center">
+      <p class="pr-4 w-36">{{ $strings.LabelStreamingCacheSize }}</p>
+      <ui-text-input type="number" v-model="settings.streamingCacheSizeMB" style="width: 145px; max-width: 145px" @input="streamingCacheSizeUpdated" />
+      <span class="material-symbols text-xl ml-2" @click.stop="showInfo('streamingCacheSizeMB')">info</span>
+    </div>
 
     <!-- Android Auto settings -->
     <template v-if="!isiOS">
@@ -223,7 +228,8 @@ export default {
         downloadUsingCellular: 'ALWAYS',
         streamingUsingCellular: 'ALWAYS',
         androidAutoBrowseLimitForGrouping: 100,
-        androidAutoBrowseSeriesSequenceOrder: 'ASC'
+        androidAutoBrowseSeriesSequenceOrder: 'ASC',
+        streamingCacheSizeMB: 256
       },
       theme: 'dark',
       lockCurrentOrientation: false,
@@ -259,6 +265,10 @@ export default {
         androidAutoBrowseLimitForGrouping: {
           name: this.$strings.LabelAndroidAutoBrowseLimitForGrouping,
           message: this.$strings.LabelAndroidAutoBrowseLimitForGroupingHelp
+        },
+        streamingCacheSizeMB: {
+          name: this.$strings.LabelStreamingCacheSize,
+          message: this.$strings.LabelStreamingCacheSizeHelp
         }
       },
       hapticFeedbackItems: [
@@ -353,6 +363,9 @@ export default {
     },
     isiOS() {
       return this.$platform === 'ios'
+    },
+    usesMedia3Player() {
+      return !!this.deviceData?.usesMedia3Player
     },
     jumpForwardSecondsOptions() {
       return this.$store.state.globals.jumpForwardSecondsOptions || []
@@ -549,6 +562,14 @@ export default {
       if (val < 30) val = 30
       this.saveSettings()
     },
+    streamingCacheSizeUpdated(val) {
+      if (val === '' || val === null || isNaN(val)) return
+      let size = Math.round(Number(val))
+      if (size > 1024) size = 1024
+      if (size < 0) size = 0
+      this.settings.streamingCacheSizeMB = size
+      this.saveSettings()
+    },
     hapticFeedbackUpdated(val) {
       this.$store.commit('globals/setHapticFeedback', val)
       this.saveSettings()
@@ -671,6 +692,7 @@ export default {
 
       this.settings.androidAutoBrowseLimitForGrouping = deviceSettings.androidAutoBrowseLimitForGrouping
       this.settings.androidAutoBrowseSeriesSequenceOrder = deviceSettings.androidAutoBrowseSeriesSequenceOrder || 'ASC'
+      this.settings.streamingCacheSizeMB = !isNaN(parseInt(deviceSettings.streamingCacheSizeMB)) ? parseInt(deviceSettings.streamingCacheSizeMB) : 256
     },
     async init() {
       this.loading = true

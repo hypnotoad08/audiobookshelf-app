@@ -152,7 +152,9 @@ data class DeviceSettings(
   var downloadUsingCellular: DownloadUsingCellularSetting,
   var streamingUsingCellular: StreamingUsingCellularSetting,
   var androidAutoBrowseLimitForGrouping: Int,
-  var androidAutoBrowseSeriesSequenceOrder: AndroidAutoBrowseSeriesSequenceOrderSetting
+  var androidAutoBrowseSeriesSequenceOrder: AndroidAutoBrowseSeriesSequenceOrderSetting,
+  // Nullable so installs predating this setting deserialize as null and get backfilled
+  var streamingCacheSizeMB: Int?
 ) {
   companion object {
     // Static method to get default device settings
@@ -181,7 +183,8 @@ data class DeviceSettings(
         downloadUsingCellular = DownloadUsingCellularSetting.ALWAYS,
         streamingUsingCellular = StreamingUsingCellularSetting.ALWAYS,
         androidAutoBrowseLimitForGrouping = 100,
-        androidAutoBrowseSeriesSequenceOrder = AndroidAutoBrowseSeriesSequenceOrderSetting.ASC
+        androidAutoBrowseSeriesSequenceOrder = AndroidAutoBrowseSeriesSequenceOrderSetting.ASC,
+        streamingCacheSizeMB = 256
       )
     }
   }

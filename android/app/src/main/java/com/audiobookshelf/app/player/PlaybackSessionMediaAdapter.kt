@@ -89,6 +89,17 @@ private fun PlaybackSession.castQueueItemWithServerUri(
     .build()
 }
 
+private fun PlaybackSession.directPlayCacheKey(audioTrack: AudioTrack?): String? {
+  if (!isDirectPlay || isLocal || audioTrack == null) return null
+  val server = serverAddress ?: return null
+  val itemId = libraryItemId ?: return null
+  val episodePart = episodeId ?: ""
+  // Include the file size so an in-place change on the server invalidates cached spans
+  // instead of mixing stale bytes with fresh ones.
+  val sizePart = audioTrack.metadata?.size ?: 0L
+  return "abs-direct:$server:$itemId:$episodePart:${audioTrack.stableId}:$sizePart"
+}
+
 /**
  * Per-track label for a multi-track session, or null for single-track sessions. Falls back to
  * "Part N" when the title is missing, echoes the book title, or looks like a filename ("track_001").
@@ -153,6 +164,9 @@ fun PlaybackSession.toMedia3MediaItems(
       .setUri(playerMediaItem.uri.toString())
       .setMediaId(playerMediaItem.mediaId)
       .setMimeType(playerMediaItem.mimeType)
+      .apply {
+        directPlayCacheKey(audioTrack)?.let { setCustomCacheKey(it) }
+      }
       .setMediaMetadata(metadataBuilder.build())
       .build()
   }

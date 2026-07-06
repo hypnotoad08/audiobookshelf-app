@@ -90,6 +90,10 @@ object DeviceManager {
       deviceData.deviceSettings?.androidAutoBrowseSeriesSequenceOrder =
               AndroidAutoBrowseSeriesSequenceOrderSetting.ASC
     }
+    // Initialize streaming cache size added in v0.13.0
+    if (deviceData.deviceSettings?.streamingCacheSizeMB == null) {
+      deviceData.deviceSettings?.streamingCacheSizeMB = 256
+    }
   }
 
   /**

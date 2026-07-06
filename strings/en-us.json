@@ -266,6 +266,8 @@
   "LabelStatsMinutes": "minutes",
   "LabelStatsMinutesListening": "Minutes Listening",
   "LabelStatsWeekListening": "Week Listening",
+  "LabelStreamingCacheSize": "Streaming cache size (MB)",
+  "LabelStreamingCacheSizeHelp": "Maximum disk space used to cache streamed audio so recently played sections don't need to be downloaded again. Set to 0 to disable. Changes take effect after restarting the app.",
   "LabelStreamingUsingCellular": "Streaming using Cellular",
   "LabelTag": "Tag",
   "LabelTags": "Tags",
