@@ -63,7 +63,11 @@ jobs:
         run: |
           sed -i "s/__DATE__/$(date)/g" index.html
           sed -i "s/__COMMIT__/$(git rev-parse --short HEAD)/g" index.html
-          sed -i "s/__APK__/$(ls *apk)/g" index.html
+          apk_links=""
+          for apk in *.apk; do
+            apk_links="${apk_links}<a href=\"${apk}\">${apk}</a><br>"
+          done
+          sed -i "s|__APK_LINKS__|${apk_links}|g" index.html
 
       - name: upload test page artifact
         uses: actions/upload-pages-artifact@v3
