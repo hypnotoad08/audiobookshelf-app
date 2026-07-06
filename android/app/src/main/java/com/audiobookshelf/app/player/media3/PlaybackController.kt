@@ -348,17 +348,23 @@ class PlaybackController(private val context: Context) {
   }
 
   /**
-   * Adopt a playback session the service started without this controller (e.g. Android Auto),
-   * so the app UI can display and control it. The service runs in the same process and
-   * publishes every assigned session via [DeviceManager.setLastPlaybackSession]; the queue's
-   * media ids are prefixed with the session id, which guards against attaching a stale
-   * persisted session. No-op when a session is already active.
+   * Adopt a playback session the service started without this controller (e.g. Android Auto,
+   * podcast auto-advance), so the app UI can display and control it. The service runs in the
+   * same process and publishes every assigned session via
+   * [DeviceManager.setLastPlaybackSession] before loading its queue; the queue's media ids are
+   * prefixed with the session id, which guards against attaching a stale persisted session.
+   * No-op while the active session still owns the loaded queue; re-attaches when the service
+   * has swapped to a different session.
    */
   private fun maybeAttachToServiceSession(mediaController: MediaController) {
-    if (activePlaybackSession != null) return
+    // preparePlayback sets the new session before the service reloads the queue; don't let the
+    // still-loaded old queue re-attach us to the outgoing session
+    if (isPreparingPlayback) return
     if (mediaController.mediaItemCount == 0) return
-    val session = DeviceManager.getLastPlaybackSession() ?: return
     val currentMediaId = mediaController.currentMediaItem?.mediaId ?: return
+    val attachedSessionId = activePlaybackSession?.id
+    if (attachedSessionId != null && currentMediaId.startsWith(attachedSessionId)) return
+    val session = DeviceManager.getLastPlaybackSession() ?: return
     if (!currentMediaId.startsWith(session.id)) {
       Log.w(
         TAG,
