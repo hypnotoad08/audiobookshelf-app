@@ -130,6 +130,18 @@ class Podcast(
     }
     return podcastEpisode
   }
+
+  // The first unfinished episode published after the given one, or null when caught up
+  @JsonIgnore
+  fun getNextEpisodeAfter(libraryItemId:String, episodeId:String, mediaManager: MediaManager):PodcastEpisode? {
+    val sortedEpisodes = episodes?.sortedBy { it.publishedAt ?: 0L } ?: return null
+    val currentIndex = sortedEpisodes.indexOfFirst { it.id == episodeId }
+    if (currentIndex < 0) return null
+    return sortedEpisodes.drop(currentIndex + 1).find { episode ->
+      val progress = mediaManager.serverUserMediaProgress.find { it.libraryItemId == libraryItemId && it.episodeId == episode.id }
+      progress == null || !progress.isFinished
+    }
+  }
 }
 
 @JsonIgnoreProperties(ignoreUnknown = true)

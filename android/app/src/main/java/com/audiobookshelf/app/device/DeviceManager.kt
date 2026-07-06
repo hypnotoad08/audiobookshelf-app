@@ -94,6 +94,10 @@ object DeviceManager {
     if (deviceData.deviceSettings?.streamingCacheSizeMB == null) {
       deviceData.deviceSettings?.streamingCacheSizeMB = 256
     }
+    // Initialize auto continue podcast episodes added in v0.13.0
+    if (deviceData.deviceSettings?.autoContinuePodcastEpisodes == null) {
+      deviceData.deviceSettings?.autoContinuePodcastEpisodes = false
+    }
   }
 
   /**

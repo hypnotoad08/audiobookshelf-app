@@ -154,7 +154,8 @@ data class DeviceSettings(
   var androidAutoBrowseLimitForGrouping: Int,
   var androidAutoBrowseSeriesSequenceOrder: AndroidAutoBrowseSeriesSequenceOrderSetting,
   // Nullable so installs predating this setting deserialize as null and get backfilled
-  var streamingCacheSizeMB: Int?
+  var streamingCacheSizeMB: Int?,
+  var autoContinuePodcastEpisodes: Boolean
 ) {
   companion object {
     // Static method to get default device settings
@@ -184,7 +185,8 @@ data class DeviceSettings(
         streamingUsingCellular = StreamingUsingCellularSetting.ALWAYS,
         androidAutoBrowseLimitForGrouping = 100,
         androidAutoBrowseSeriesSequenceOrder = AndroidAutoBrowseSeriesSequenceOrderSetting.ASC,
-        streamingCacheSizeMB = 256
+        streamingCacheSizeMB = 256,
+        autoContinuePodcastEpisodes = false
       )
     }
   }

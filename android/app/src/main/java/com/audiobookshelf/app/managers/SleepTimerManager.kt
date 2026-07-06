@@ -250,6 +250,17 @@ constructor(private val host: SleepTimerHost, serviceScope: CoroutineScope) {
     return sleepTimerEndTime
   }
 
+  /**
+   * True while the timer is counting down or within 30s of having fired. The timer pauses on a
+   * 1-second tick, so an end-of-episode timer can fire just after the player reaches ENDED; the
+   * grace window lets callers (podcast auto-advance) treat that race as "timer went off".
+   */
+  fun isActiveOrJustFired(): Boolean {
+    if (sleepTimerRunning) return true
+    if (sleepTimerFinishedAt <= 0L) return false
+    return System.currentTimeMillis() - sleepTimerFinishedAt < 30_000L
+  }
+
   /** Cancels the sleep timer. */
   fun cancelSleepTimer() {
     Log.d(tag, "Canceling Sleep Timer")

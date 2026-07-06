@@ -725,7 +725,10 @@ class Media3PlaybackService : MediaLibraryService(), Media3ServiceHost, Playback
       return
     }
 
-    if (!isAndroidAutoControllerConnected()) return
+    // Android Auto always advances (parity with the exov2 player); elsewhere it's opt-in
+    if (!isAndroidAutoControllerConnected() && !deviceSettings.autoContinuePodcastEpisodes) return
+    // A sleep timer counting down (or one that just fired at the episode end) wins over auto-advance
+    if (sleepTimerCoordinator.isTimerActiveOrJustFired()) return
     val libraryItem = session.libraryItem ?: return
       val currentSpeed = currentPlaybackSpeed()
     // Captured before the async hops below: building the payload reads player.deviceInfo, which
@@ -734,8 +737,11 @@ class Media3PlaybackService : MediaLibraryService(), Media3ServiceHost, Playback
 
     mediaManager.loadServerUserMediaProgress {
       val podcast = libraryItem.media as? Podcast ?: return@loadServerUserMediaProgress
-      val nextEpisode = podcast.getNextUnfinishedEpisode(libraryItem.id, mediaManager)
-        ?: return@loadServerUserMediaProgress
+      // Podcast semantics: continue forward in publish order from the finished episode,
+      // not the library-wide newest unfinished episode
+      val nextEpisode = session.episodeId?.let { finishedEpisodeId ->
+        podcast.getNextEpisodeAfter(libraryItem.id, finishedEpisodeId, mediaManager)
+      } ?: return@loadServerUserMediaProgress
 
       mediaManager.play(libraryItem, nextEpisode, payload) { nextSession ->
         if (nextSession != null) {

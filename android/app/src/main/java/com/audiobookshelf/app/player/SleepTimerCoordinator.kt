@@ -81,6 +81,8 @@ class SleepTimerCoordinator(
     sleepTimerManager?.checkAutoSleepTimer()
   }
 
+  fun isTimerActiveOrJustFired(): Boolean = sleepTimerManager?.isActiveOrJustFired() ?: false
+
   fun setManualTimer(sessionId: String, timeMs: Long, isChapterTime: Boolean): Boolean {
     return ensureSleepTimerManager().setManualSleepTimer(sessionId, timeMs, isChapterTime)
   }

@@ -67,6 +67,13 @@
       </div>
       <p class="pl-4">{{ $strings.LabelAllowSeekingOnMediaControls }}</p>
     </div>
+    <div v-if="usesMedia3Player" class="flex items-center py-3">
+      <div class="w-10 flex justify-center" @click="toggleAutoContinuePodcastEpisodes">
+        <ui-toggle-switch v-model="settings.autoContinuePodcastEpisodes" @input="saveSettings" />
+      </div>
+      <p class="pl-4">{{ $strings.LabelAutoContinuePodcastEpisodes }}</p>
+      <span class="material-symbols text-xl ml-2" @click.stop="showInfo('autoContinuePodcastEpisodes')">info</span>
+    </div>
 
     <!-- Sleep timer settings -->
     <template v-if="!isiOS">
@@ -229,7 +236,8 @@ export default {
         streamingUsingCellular: 'ALWAYS',
         androidAutoBrowseLimitForGrouping: 100,
         androidAutoBrowseSeriesSequenceOrder: 'ASC',
-        streamingCacheSizeMB: 256
+        streamingCacheSizeMB: 256,
+        autoContinuePodcastEpisodes: false
       },
       theme: 'dark',
       lockCurrentOrientation: false,
@@ -269,6 +277,10 @@ export default {
         streamingCacheSizeMB: {
           name: this.$strings.LabelStreamingCacheSize,
           message: this.$strings.LabelStreamingCacheSizeHelp
+        },
+        autoContinuePodcastEpisodes: {
+          name: this.$strings.LabelAutoContinuePodcastEpisodes,
+          message: this.$strings.LabelAutoContinuePodcastEpisodesHelp
         }
       },
       hapticFeedbackItems: [
@@ -632,6 +644,10 @@ export default {
       this.settings.allowSeekingOnMediaControls = !this.settings.allowSeekingOnMediaControls
       this.saveSettings()
     },
+    toggleAutoContinuePodcastEpisodes() {
+      this.settings.autoContinuePodcastEpisodes = !this.settings.autoContinuePodcastEpisodes
+      this.saveSettings()
+    },
     getCurrentOrientation() {
       const orientation = window.screen?.orientation || {}
       const type = orientation.type || ''
@@ -693,6 +709,7 @@ export default {
       this.settings.androidAutoBrowseLimitForGrouping = deviceSettings.androidAutoBrowseLimitForGrouping
       this.settings.androidAutoBrowseSeriesSequenceOrder = deviceSettings.androidAutoBrowseSeriesSequenceOrder || 'ASC'
       this.settings.streamingCacheSizeMB = !isNaN(parseInt(deviceSettings.streamingCacheSizeMB)) ? parseInt(deviceSettings.streamingCacheSizeMB) : 256
+      this.settings.autoContinuePodcastEpisodes = !!deviceSettings.autoContinuePodcastEpisodes
     },
     async init() {
       this.loading = true
