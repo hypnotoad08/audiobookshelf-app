@@ -15,8 +15,10 @@ import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.source.DefaultMediaSourceFactory
 import androidx.media3.exoplayer.upstream.DefaultLoadErrorHandlingPolicy
 import androidx.media3.exoplayer.upstream.LoadErrorHandlingPolicy
+import androidx.media3.exoplayer.util.EventLogger
 import androidx.media3.extractor.DefaultExtractorsFactory
 import androidx.media3.extractor.mp3.Mp3Extractor
+import com.audiobookshelf.app.BuildConfig
 import com.audiobookshelf.app.device.DeviceManager
 import com.audiobookshelf.app.player.PlaybackConstants
 import com.audiobookshelf.app.player.wrapper.AbsPlayerWrapper
@@ -109,6 +111,7 @@ class PlaybackPipeline(
       .setSeekForwardIncrementMs(seekForwardIncrementMs)
       .setDeviceVolumeControlEnabled(true)
       .build()
+    if (BuildConfig.DEBUG) exoPlayer.addAnalyticsListener(EventLogger())
 
         val playerWithCast = try {
             CastPlayer.Builder(context)
