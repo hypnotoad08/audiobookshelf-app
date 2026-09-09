@@ -10,6 +10,7 @@ import com.audiobookshelf.app.*
 import com.audiobookshelf.app.data.*
 import com.audiobookshelf.app.data.DeviceInfo
 import com.audiobookshelf.app.device.DeviceManager
+import com.audiobookshelf.app.plugins.AbsLogger
 import com.audiobookshelf.app.managers.DbManager
 import com.audiobookshelf.app.media.*
 import com.audiobookshelf.app.media.SyncResult
@@ -199,6 +200,14 @@ class Media3PlaybackService : MediaLibraryService(), PlaybackEventSink, Playback
   }
 
   override fun onTaskRemoved(rootIntent: Intent?) {
+    // Playback on a cast device carries on without this app, so swiping it away must not end it.
+    // Checked before super, which stops the service itself when the player is not playing locally -
+    // and while casting it never is.
+    if (isCastActive && currentPlaybackSession != null) {
+      AbsLogger.info(TAG, "onTaskRemoved: Keeping the service alive, playback runs on a cast device")
+      return
+    }
+
     super.onTaskRemoved(rootIntent)
     if (currentPlaybackSession != null) {
       closePlayback()
